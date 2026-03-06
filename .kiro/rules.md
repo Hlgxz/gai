@@ -1,113 +1,36 @@
-# Kiro Rules — Gai Framework
+# Kiro Rules — Gai Framework Source
 
-## Project Overview
+Gai (`github.com/Hlgxz/gai`) is a Go web framework **library**, not an application.
 
-- **Name**: Gai (Go + AI)
-- **Type**: AI-native Go web framework
-- **Module**: `github.com/Hlgxz/gai`
-- **Purpose**: Build mini-program backends and web services with schema-driven code generation
-
-## Setup Command
-
+## Usage
 ```bash
-go mod tidy && go build ./... && go run ./cmd/gai --help
+go install github.com/Hlgxz/gai/cmd/gai@latest
+gai new myapp --module github.com/user/myapp  # generates project + AI rules
+cd myapp && go mod tidy && gai serve
 ```
 
-## Architectural Layers
+## Conventions
+- Import `gai/http` as `ghttp` (mandatory)
+- Handler: `func(c *ghttp.Context)`
+- ORM: `orm.Query[T](db)`, `orm.Get[T]()`, `orm.Create[T]()`, `orm.Paginate[T]()`
+- Model: embed `orm.Model`, `gai:"..."` tags
+- Route: `r.Group()`, `r.Resource()`, `:param` paths
+- Middleware: `ghttp.HandlerFunc`, must `c.Next()`
+- Validate: `ghttp.NewValidator(data, rules)`, pipe syntax
+- Schema: YAML → `gai generate --schema`
 
-1. **Core** (`app.go`, `container.go`, `provider.go`) — DI container, application lifecycle
-2. **HTTP** (`router/`, `http/`, `middleware/`) — routing, context, built-in middleware
-3. **Data** (`database/`) — ORM with generics, multi-DB drivers, migrations
-4. **Auth** (`auth/`) — multi-guard JWT authentication
-5. **MiniApp** (`miniapp/`) — WeChat and Alipay SDKs
-6. **AI** (`ai/`) — YAML schema parser + code generator
-7. **CLI** (`cmd/gai/`) — scaffolding and tooling
-
-## Coding Standards
-
-### Import Convention (CRITICAL)
-```go
-import ghttp "github.com/Hlgxz/gai/http"  // ALWAYS alias as ghttp
-```
-
-### Handler Pattern
-```go
-func MyHandler(c *ghttp.Context) {
-    id := c.ParamInt("id")
-    data, err := orm.First[MyModel](orm.Query[MyModel](db).Where("id", "=", id))
-    if err != nil {
-        c.Error(500, err.Error())
-        return
-    }
-    c.Success(data)
-}
-```
-
-### Model Pattern
-```go
-type MyModel struct {
-    orm.Model
-    Field string `json:"field" gai:"column:field;size:100;index"`
-}
-```
-
-### Route Pattern
-```go
-r.Group("/api/v1", func(g *router.Group) {
-    g.Use(authManager.Middleware("jwt"))
-    g.Resource("/items", itemController)
-})
-```
-
-### Middleware Pattern
-```go
-func MyMiddleware() ghttp.HandlerFunc {
-    return func(c *ghttp.Context) {
-        // pre-processing
-        c.Next()
-        // post-processing
-    }
-}
-```
-
-### Validation Pattern
-```go
-v := ghttp.NewValidator(input, map[string]string{
-    "name":  "required|min:2|max:50",
-    "email": "required|email",
-})
-if errs := v.Validate(); errs != nil {
-    c.JSON(422, map[string]any{"code": 422, "errors": errs})
-    return
-}
-```
-
-## Schema-Driven Workflow
-
-1. Define YAML schema in `schemas/`
-2. Run `go run ./cmd/gai generate --schema schemas/`
-3. Generated: Model + Controller + Migration + Routes
-4. Register routes, run migrations, done
-
-## File Naming
-
-- Go source: `snake_case.go`
-- Schema: `snake_case.yaml`
-- DB tables: auto `snake_case` plural (`UserPost` → `user_posts`)
-
-## Key APIs Quick Reference
+## Quick API Reference
 
 | Operation | Code |
 |-----------|------|
-| Create app | `gai.New()` |
+| New app | `gai.New()` |
 | Load config | `app.LoadConfig("config")` |
-| Get router | `app.Router()` |
+| Defaults | `app.UseDefaults()` |
 | DI resolve | `gai.Make[T](container, "name")` |
-| Query | `orm.Query[T](db).Where(...).OrderBy(...)` |
+| Query | `orm.Query[T](db).Where(...)` |
 | Get all | `orm.Get[T](query)` |
 | Get one | `orm.First[T](query)` |
-| Paginate | `orm.Paginate[T](query, page, perPage)` |
+| Paginate | `orm.Paginate[T](query, page, pp)` |
 | Create | `orm.Create[T](db, &item)` |
-| JWT token | `guard.IssueToken(userID, extra)` |
-| WeChat login | `wechatClient.Auth().Code2Session(code)` |
-| Validate | `ghttp.NewValidator(data, rules).Validate()` |
+| JWT | `guard.IssueToken(uid, extra)` |
+| WeChat | `client.Auth().Code2Session(code)` |

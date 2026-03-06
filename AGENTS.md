@@ -1,104 +1,113 @@
-# AGENTS.md — Gai Framework Instructions for AI Coding Agents
+# AGENTS.md — Gai Framework
 
-> This file provides context for AI coding agents (Codex CLI, OpenAI Codex, and others).
+> 面向所有 AI 编码工具 (Codex CLI, Claude Code, Cursor, Copilot, Windsurf, Kiro, Gemini, Roo Code 等)
 
-## Repository
+## 这是什么
 
-- **Name**: Gai — AI-native Go web framework
-- **URL**: https://github.com/Hlgxz/gai
-- **Module**: `github.com/Hlgxz/gai`
-- **Language**: Go 1.22+
-- **Motto**: "Define once, generate everything."
+Gai (`github.com/Hlgxz/gai`) 是一个 Go Web 框架**库**，用户通过 `go get` 导入到自己的业务项目中使用。
 
-## One-Step Environment Setup
+## 当用户说"用 Gai 框架开发"时，执行以下步骤
+
+### 步骤 1：创建业务项目
 
 ```bash
-git clone https://github.com/Hlgxz/gai.git && cd gai && go mod tidy && go build ./...
+# 安装 CLI（如果还没装）
+go install github.com/Hlgxz/gai/cmd/gai@latest
+
+# 创建新项目（自动生成完整结构 + AI 规则文件）
+gai new myapp --module github.com/user/myapp
+cd myapp
+go mod tidy
 ```
 
-Verify: `go run ./cmd/gai --help` should show available commands.
+### 步骤 2：立即可以开发
 
-## Architecture Summary
+项目已包含：
+- `main.go` — 入口，已配好 Gai 应用
+- `routes/routes.go` — 路由注册
+- `config/app.yaml` + `.env` — 配置
+- `schemas/` — Schema 定义目录
+- 全平台 AI 规则文件 — 所有 AI 工具即开即用
 
-Gai is a full-stack Go web framework with these layers:
+### 步骤 3：开发新功能
 
-1. **Application Layer** (`app.go`, `container.go`, `provider.go`): DI container with Bind/Singleton/Make[T], ServiceProvider pattern for modular boot.
-2. **HTTP Layer** (`router/`, `http/`, `middleware/`): Custom router with path params (`:id`), groups, RESTful resources. Context wraps request/response with JSON/HTML helpers.
-3. **Data Layer** (`database/`): Multi-driver ORM with generic query builder, migration engine with Blueprint schema builder.
-4. **Auth Layer** (`auth/`): Multi-guard system supporting JWT and extensible to WeChat/Alipay.
-5. **Mini-program Layer** (`miniapp/`): WeChat (login, pay, messages) and Alipay (login) SDKs.
-6. **AI/Generation Layer** (`ai/`): YAML schema parser + code generator producing Model, Controller, Migration, Routes.
-7. **CLI** (`cmd/gai/`): Project scaffolding, code generation, dev server, migrations.
-
-## Critical Convention: HTTP Package Aliasing
-
-The framework has its own `http` package. **Always** import it as `ghttp`:
-
-```go
-import ghttp "github.com/Hlgxz/gai/http"
+**Schema 驱动（推荐）**：
+```bash
+# 1. 创建 schemas/product.yaml
+# 2. 生成代码
+gai generate --schema schemas/product.yaml
+# 3. 注册路由
+# 4. 运行
+gai serve
 ```
 
-Handler functions use `func(c *ghttp.Context)`, not `http.HandlerFunc`.
-
-## Key Patterns
-
-### Route Registration
-```go
-r := app.Router()
-r.Get("/", handler)
-r.Group("/api", func(g *router.Group) {
-    g.Use(middleware)
-    g.Resource("/users", controller)  // auto CRUD routes
-})
+**手动开发**：
+```bash
+gai make model Product
+gai make controller Product
+gai make migration create_products_table
 ```
 
-### ORM Queries (always use generic functions)
+## Gai 框架核心规则
+
+### Import 别名（强制）
 ```go
-items, _ := orm.Get[Item](orm.Query[Item](db).Where("active", "=", true).OrderBy("id", "DESC"))
-item, _ := orm.First[Item](orm.Query[Item](db).Where("id", "=", 1))
-page, _ := orm.Paginate[Item](orm.Query[Item](db), pageNum, perPage)
-created, _ := orm.Create[Item](db, &Item{Name: "x"})
-orm.Update[Item](db, item)
-orm.Delete[Item](db, item)
+import ghttp "github.com/Hlgxz/gai/http"   // 必须
 ```
 
-### Model Definition
+### Handler 签名
 ```go
-type Item struct {
-    orm.Model                                    // ID, CreatedAt, UpdatedAt, DeletedAt
+func Handler(c *ghttp.Context) {
+    c.Success(data)       // {"code":0,"message":"ok","data":...}
+    c.Error(400, "msg")   // {"code":400,"message":"msg"}
+}
+```
+
+### ORM 用法
+```go
+orm.Query[User](db).Where("status", "=", "active")
+orm.Get[User](query)          // []User
+orm.First[User](query)        // *User
+orm.Create[User](db, &user)   // 插入
+orm.Paginate[User](q, 1, 20)  // 分页
+```
+
+### Model 定义
+```go
+type User struct {
+    orm.Model
     Name string `json:"name" gai:"column:name;size:100"`
 }
 ```
 
-### Validation
+### 路由
 ```go
-v := ghttp.NewValidator(data, map[string]string{
-    "email": "required|email",
-    "age":   "required|numeric|min:0|max:150",
+r.Group("/api/v1", func(g *router.Group) {
+    g.Use(authManager.Middleware("jwt"))
+    g.Resource("/users", ctrl) // 自动 5 条 CRUD 路由
 })
-if errs := v.Validate(); errs != nil { /* handle */ }
 ```
 
-### Schema-Driven Code Generation
-```bash
-# Generate from single schema
-go run ./cmd/gai generate --schema schemas/product.yaml
-
-# Generate from all schemas in directory
-go run ./cmd/gai generate --schema schemas/
+### 校验
+```go
+ghttp.NewValidator(data, map[string]string{"email": "required|email"}).Validate()
 ```
 
-## File Naming Rules
+## 包速查
 
-- Go files: `snake_case.go` (e.g., `user_controller.go`)
-- Schema files: `snake_case.yaml`
-- Packages: short, lowercase, single word
-- Models: PascalCase struct names → auto snake_case+plural table names
+| 导入 | 别名 | 关键导出 |
+|------|------|---------|
+| github.com/Hlgxz/gai | gai | Application, Container, Make[T] |
+| github.com/Hlgxz/gai/http | ghttp | Context, HandlerFunc, Validator |
+| github.com/Hlgxz/gai/router | router | Router, Group, ResourceController |
+| github.com/Hlgxz/gai/database/orm | orm | DB, Model, Query[T], Get[T], Create[T] |
+| github.com/Hlgxz/gai/auth | auth | Manager, Guard, JWTGuard |
+| github.com/Hlgxz/gai/middleware | middleware | CORS(), Logger(), Recovery() |
+| github.com/Hlgxz/gai/miniapp/wechat | wechat | Client, Auth, Pay, Message |
 
-## Do NOT
+## 禁止
 
-- Use `init()` outside of `database/driver/*.go`
-- Import `github.com/Hlgxz/gai/http` without aliasing as `ghttp`
-- Use raw `http.ResponseWriter`/`http.Request` in handlers — use `*ghttp.Context`
-- Add third-party router libraries (gin, echo, chi) — Gai has its own router
-- Hardcode database SQL — use the query builder or migration blueprint
+- 导入 gai/http 不加 ghttp 别名
+- 使用 net/http 的 ResponseWriter 替代 ghttp.Context
+- 中间件跳过 c.Next()
+- 添加 gin/echo/chi（Gai 自带路由）

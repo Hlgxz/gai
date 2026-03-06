@@ -1,97 +1,65 @@
-# CLAUDE.md — Gai Framework Guide for Claude Code
+# CLAUDE.md — Gai Framework
 
-## What Is This Repository?
+## 这是什么
 
-**Gai** is an AI-native Go web framework (`github.com/Hlgxz/gai`). It combines Go's simplicity with Laravel's elegance, featuring schema-driven code generation, a DI container, multi-database ORM, JWT/WeChat auth, and a full CLI toolkit.
+Gai (`github.com/Hlgxz/gai`) 是一个 AI 原生的 Go Web 框架，作为 **库** 被业务项目导入使用。
 
-## Quick Setup
+## 用户如何使用此框架
 
 ```bash
-go mod tidy && go build ./... && go run ./cmd/gai --help
+# 方式一：通过 CLI 创建项目（推荐）
+go install github.com/Hlgxz/gai/cmd/gai@latest
+gai new myapp --module github.com/user/myapp
+cd myapp && go mod tidy && gai serve
+
+# 方式二：手动创建项目
+mkdir myapp && cd myapp
+go mod init github.com/user/myapp
+go get github.com/Hlgxz/gai
+# 然后编写 main.go 导入 gai
 ```
 
-## Architecture
+`gai new` 会自动生成完整项目结构，包含所有 AI 工具的规则文件（.cursor/rules/、CLAUDE.md、AGENTS.md 等），让 AI 编程工具能立即理解框架并开始开发。
 
-The root package `gai` exports `Application`, `Container`, `Make[T]()`, and `ServiceProvider`. All HTTP handlers use `ghttp.Context` (import `github.com/Hlgxz/gai/http` as `ghttp`).
+## 框架架构
 
-| Package | Purpose |
-|---------|---------|
-| `gai` (root) | Application kernel, DI container, service provider interface |
-| `config/` | YAML config + .env loading, dot-notation Get/Set |
-| `router/` | HTTP router with `:param` paths, groups, `Resource()` for RESTful |
-| `http/` | `Context` (request/response), `Validator` (pipe rules) |
-| `database/orm/` | Generic `Query[T]`, `Get[T]`, `First[T]`, `Create[T]`, `Paginate[T]` |
-| `database/driver/` | `Driver` interface + MySQL, PostgreSQL, SQLite implementations |
-| `database/migration/` | `Migrator` + `Blueprint` schema builder |
-| `auth/` | `Manager` with multi-guard support, `JWTGuard` |
-| `miniapp/wechat/` | Code2Session, UnifiedOrder (pay), SubscribeMessage |
-| `miniapp/alipay/` | OAuth login |
-| `ai/schema/` | YAML schema parser (`ParseFile`, `ParseDir`) |
-| `ai/generator/` | Code generation: Model, Controller, Migration, Routes |
+| 包 | 用途 |
+|----|------|
+| `gai` (根包) | Application Kernel, DI Container, ServiceProvider |
+| `config/` | YAML 配置 + .env 加载 |
+| `router/` | HTTP 路由 (:param、Group、Resource) |
+| `http/` | Context (请求/响应)、Validator (校验器) |
+| `database/orm/` | 泛型 ORM: Query[T], Get[T], Create[T], Paginate[T] |
+| `database/driver/` | 数据库驱动抽象 (MySQL/PG/SQLite) |
+| `database/migration/` | 迁移引擎 + Blueprint Schema Builder |
+| `auth/` | 多 Guard 认证 + JWT |
+| `miniapp/wechat/` | 微信小程序 SDK |
+| `miniapp/alipay/` | 支付宝小程序 SDK |
+| `ai/schema/` | YAML Schema 解析器 |
+| `ai/generator/` | 代码生成 (Model/Controller/Migration/Routes) |
 | `middleware/` | CORS, Logger, Recovery, RateLimit |
-| `support/` | `Snake()`, `Camel()`, `Plural()`, `Hash()`, `Env()` |
-| `cmd/gai/` | CLI: `new`, `serve`, `make`, `generate`, `migrate` |
+| `support/` | 工具函数 (Snake, Camel, Hash, Env) |
+| `cmd/gai/` | CLI (new, serve, make, generate, migrate) |
 
-## Code Conventions
+## 框架开发约定
 
-- **Always** alias `github.com/Hlgxz/gai/http` as `ghttp` to avoid conflict with `net/http`.
-- Handler signature: `func(c *ghttp.Context)`.
-- Success: `c.Success(data)` → `{code: 0, message: "ok", data}`.
-- Error: `c.Error(httpCode, message)` → `{code, message}`.
-- ORM models embed `orm.Model` and use `gai:"..."` struct tags.
-- Table names auto-derive: `UserPost` → `user_posts`.
-- Files use snake_case: `user_controller.go`.
-- No `init()` functions except in `database/driver/*.go` for driver registration.
-- Middleware must call `c.Next()` to continue the chain.
+- `github.com/Hlgxz/gai/http` **必须** 使用 `ghttp` 别名导入
+- Handler 签名: `func(c *ghttp.Context)`
+- ORM 使用包级泛型函数: `orm.Get[T]()`, `orm.Create[T]()`
+- Model 嵌入 `orm.Model`，使用 `gai:"..."` 标签
+- 中间件必须调用 `c.Next()`
+- 不在 `database/driver/` 之外使用 `init()`
+- 文件命名 snake_case，表名自动 plural snake_case
 
-## Schema-Driven Workflow
+## 修改此框架时
 
-Create YAML schemas in `schemas/` or `examples/`, then generate:
+- 添加新 Schema 类型 → 更新 `ai/schema/types.go` 的 GoType + NeedsImport + 3 个 driver 的 ColumnType
+- 添加新 CLI 命令 → 在 `cmd/gai/` 写 cobra Command，在 `main.go` 注册
+- 添加新内置中间件 → 在 `middleware/` 中返回 `ghttp.HandlerFunc`
+- 添加新 Guard → 实现 `auth.Guard` 接口
 
-```bash
-go run ./cmd/gai generate --schema examples/user.yaml
-```
-
-Schema format:
-```yaml
-model: User
-table: users
-fields:
-  - name: email
-    type: string
-    unique: true
-    rules: required|email
-api:
-  prefix: /api/v1/users
-  actions: [index, show, store, update, destroy]
-  auth: jwt
-relations:
-  - type: hasMany
-    model: Post
-```
-
-## Adding New Components
-
-- **Model**: Embed `orm.Model`, add `gai` tags, place in `database/orm/` or user's `app/models/`.
-- **Route**: Use `r.Get()`, `r.Group()`, `r.Resource()` on `*router.Router`.
-- **Middleware**: Return `ghttp.HandlerFunc`, call `c.Next()` inside.
-- **Guard**: Implement `auth.Guard` interface (Name, User, Check, Attempt, Logout).
-- **Driver**: Implement `driver.Driver` interface, register via `driver.Register()` in `init()`.
-- **CLI command**: Add cobra command in `cmd/gai/`, register in `main.go`.
-- **Schema type**: Update `ai/schema/types.go` GoType + NeedsImport, plus all 3 driver ColumnType methods.
-
-## Testing
+## 编译与验证
 
 ```bash
-go build ./...   # compile check
-go vet ./...     # static analysis
-go test ./...    # run tests
+go build ./... && go vet ./... && go test ./...
 ```
-
-## Dependencies (do not change versions without reason)
-
-- `gopkg.in/yaml.v3` — config/schema parsing
-- `github.com/golang-jwt/jwt/v5` — JWT auth
-- `github.com/spf13/cobra` — CLI
-- `github.com/go-sql-driver/mysql`, `github.com/lib/pq`, `modernc.org/sqlite` — DB drivers
-- `golang.org/x/crypto` — bcrypt

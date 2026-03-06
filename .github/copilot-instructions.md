@@ -1,76 +1,35 @@
-# GitHub Copilot Instructions — Gai Framework
+# GitHub Copilot — Gai Framework Source
 
-## Context
+This is the **source repository** of the Gai Go web framework (`github.com/Hlgxz/gai`).
 
-You are working in the **Gai** framework repository (`github.com/Hlgxz/gai`), an AI-native Go web framework for building mini-program backends and web services. It features a DI container, custom router, generic ORM, JWT auth, WeChat/Alipay SDKs, and schema-driven code generation.
-
-## Setup
-
+Users consume this as a library:
 ```bash
-go mod tidy && go build ./...
+go install github.com/Hlgxz/gai/cmd/gai@latest
+gai new myapp --module github.com/user/myapp
 ```
 
-## Code Style Requirements
+`gai new` auto-generates AI rules files for all major tools (Cursor, Claude, Copilot, Windsurf, Kiro, Gemini, Roo Code, Augment).
 
-1. **Always** import `github.com/Hlgxz/gai/http` with alias `ghttp`:
-   ```go
-   import ghttp "github.com/Hlgxz/gai/http"
-   ```
+## Key Conventions
 
-2. Handler functions use `func(c *ghttp.Context)`, never raw `net/http` handlers.
+- Import `github.com/Hlgxz/gai/http` as `ghttp` (mandatory alias)
+- Handler: `func(c *ghttp.Context)` — use `c.Success()`, `c.Error()`, `c.JSON()`
+- ORM generics: `orm.Query[T](db)`, `orm.Get[T](q)`, `orm.Create[T](db, &item)`
+- Models embed `orm.Model` with `gai:"..."` struct tags
+- Router: `r.Get("/:param", h)`, `r.Group()`, `r.Resource()`
+- Middleware: return `ghttp.HandlerFunc`, must call `c.Next()`
+- Validation: `ghttp.NewValidator(data, rules)` with pipe syntax `required|email|min:5`
+- Schema-driven: YAML in `schemas/` → `gai generate --schema schemas/`
 
-3. Response patterns:
-   - Success: `c.Success(data)` → `{"code": 0, "message": "ok", "data": ...}`
-   - Error: `c.Error(code, message)` → `{"code": N, "message": "..."}`
-   - JSON: `c.JSON(statusCode, obj)` for custom responses
+## Package Map
 
-4. ORM uses Go generics — always use package-level functions:
-   ```go
-   orm.Get[User](query)     // not query.Get()
-   orm.First[User](query)   // returns (*User, error)
-   orm.Create[User](db, m)  // returns (*User, error)
-   orm.Paginate[User](q, page, perPage)
-   ```
-
-5. Models embed `orm.Model` and use `gai:"..."` struct tags:
-   ```go
-   type User struct {
-       orm.Model
-       Name string `json:"name" gai:"column:name;size:100;index"`
-   }
-   ```
-
-6. Routes use `:param` syntax for path parameters:
-   ```go
-   r.Get("/users/:id", handler)  // c.Param("id") in handler
-   ```
-
-7. Middleware must call `c.Next()` to continue the handler chain.
-
-8. File naming: `snake_case.go` for all Go source files.
-
-## Package Reference
-
-| Import | Alias | Purpose |
+| Import | Alias | Exports |
 |--------|-------|---------|
 | `github.com/Hlgxz/gai` | `gai` | Application, Container, Make[T] |
 | `github.com/Hlgxz/gai/http` | `ghttp` | Context, HandlerFunc, Validator |
 | `github.com/Hlgxz/gai/router` | `router` | Router, Group, ResourceController |
-| `github.com/Hlgxz/gai/database/orm` | `orm` | DB, Model, Query, Get, First, Create |
-| `github.com/Hlgxz/gai/database/driver` | `driver` | Driver interface, Register |
-| `github.com/Hlgxz/gai/database/migration` | `migration` | Migrator, Blueprint, Migration |
+| `github.com/Hlgxz/gai/database/orm` | `orm` | DB, Model, Query[T], Get[T], Create[T] |
 | `github.com/Hlgxz/gai/auth` | `auth` | Manager, Guard, JWTGuard |
-| `github.com/Hlgxz/gai/middleware` | `middleware` | CORS, Logger, Recovery, RateLimit |
+| `github.com/Hlgxz/gai/middleware` | `middleware` | CORS(), Logger(), Recovery(), RateLimit() |
 | `github.com/Hlgxz/gai/miniapp/wechat` | `wechat` | Client, Auth, Pay, Message |
-| `github.com/Hlgxz/gai/miniapp/alipay` | `alipay` | Client, Auth |
-| `github.com/Hlgxz/gai/ai/schema` | `schema` | ParseFile, ParseDir, Schema |
-| `github.com/Hlgxz/gai/ai/generator` | `generator` | Generator, GenerateAll |
-| `github.com/Hlgxz/gai/support` | `support` | Snake, Camel, Plural, Hash, Env |
-
-## Schema-Driven Development
-
-Create YAML in `schemas/`, run `go run ./cmd/gai generate --schema schemas/`. Each schema auto-generates model, controller, migration, and route files.
-
-## Validation Rules
-
-Pipe-separated: `required|email|min:2|max:100|numeric|phone|alpha|alphanumeric|url|in:a,b,c|regex:pattern`.
+| `github.com/Hlgxz/gai/support` | `support` | Snake, Camel, Hash, Env |

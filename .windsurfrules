@@ -1,72 +1,25 @@
-# Windsurf Rules — Gai Framework
+# Windsurf Rules — Gai Framework Source
 
-## Repository Identity
+Gai (`github.com/Hlgxz/gai`) is a Go web framework **library**.
 
-This is **Gai** (`github.com/Hlgxz/gai`), an AI-native Go web framework.
-Motto: "Define once, generate everything."
+Users use it via: `go install github.com/Hlgxz/gai/cmd/gai@latest && gai new myapp`
+`gai new` generates projects with all AI rules pre-configured.
 
-## Environment Setup
+## Framework Development
 
 ```bash
-go mod tidy && go build ./... && go run ./cmd/gai --help
+go mod tidy && go build ./... && go vet ./...
 ```
 
-## Architecture
+## Core Rules
 
-Root package `gai` provides Application (kernel), Container (DI), ServiceProvider.
-Sub-packages: config, router, http, database/{orm,driver,migration}, auth, miniapp/{wechat,alipay}, ai/{schema,generator}, middleware, support, cmd/gai.
-
-## Mandatory Conventions
-
-1. ALWAYS import `github.com/Hlgxz/gai/http` as `ghttp`:
-   ```go
-   import ghttp "github.com/Hlgxz/gai/http"
-   ```
-
-2. Handler signature: `func(c *ghttp.Context)` — never use raw net/http types.
-
-3. Response helpers:
-   - `c.Success(data)` → `{code:0, message:"ok", data}`
-   - `c.Error(code, msg)` → `{code, message}`
-   - `c.JSON(status, obj)` for custom
-
-4. ORM uses generics at package level:
-   ```go
-   orm.Query[T](db)         // create query builder
-   orm.Get[T](qb)           // execute → []T
-   orm.First[T](qb)         // execute → *T
-   orm.Create[T](db, &T{})  // insert
-   orm.Update[T](db, &t)    // update by ID
-   orm.Delete[T](db, &t)    // soft delete or hard delete
-   orm.Paginate[T](qb, page, perPage)
-   ```
-
-5. Models embed `orm.Model`, use `gai:"..."` tags:
-   ```go
-   type User struct {
-       orm.Model
-       Name string `json:"name" gai:"column:name;size:100"`
-   }
-   ```
-
-6. Router: `:param` path params, `Group()` for prefix+middleware, `Resource()` for CRUD.
-
-7. Middleware: return `ghttp.HandlerFunc`, call `c.Next()`.
-
-8. Validation: `ghttp.NewValidator(data, rules)` with pipe syntax `required|email|min:5`.
-
-9. Files: snake_case.go. Tables: auto-derived snake_case plural of struct name.
-
-10. No init() outside database/driver/*.go — use ServiceProvider.
-
-## Schema-Driven Development
-
-YAML schemas in `schemas/` → `go run ./cmd/gai generate --schema schemas/` → generates Model + Controller + Migration + Routes.
-
-## CLI Commands
-
-- `gai new <name>` — scaffold project
-- `gai serve [-w]` — dev server (with watch)
-- `gai make model|controller|middleware|migration <Name>`
-- `gai generate --schema <path>`
-- `gai migrate [rollback|status]`
+1. ALWAYS import `github.com/Hlgxz/gai/http` as `ghttp`
+2. Handler: `func(c *ghttp.Context)` — c.Success(), c.Error(), c.JSON()
+3. ORM generics: `orm.Query[T](db)`, `orm.Get[T](q)`, `orm.Create[T](db, &t)`
+4. Models embed `orm.Model` with `gai:"..."` tags
+5. Routes: `:param` paths, `Group()`, `Resource()` for CRUD
+6. Middleware: return `ghttp.HandlerFunc`, call `c.Next()`
+7. Validation: pipe syntax `required|email|min:5`
+8. Schema YAML → `gai generate` → Model + Controller + Migration + Routes
+9. Files: snake_case.go. Tables: auto plural snake_case
+10. No init() outside database/driver/
