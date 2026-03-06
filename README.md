@@ -6,6 +6,8 @@ Gai 是一个 AI 原生的 Go Web 全栈框架，融合 Go 语言的简洁高效
 
 ## 特性
 
+- **AI 原生开发** — 内置全平台 AI Agent Rules，支持所有主流 AI 编程工具即开即用
+
 - **Schema 驱动** — 用 YAML 描述业务模型，自动生成 Model、Controller、Migration、Routes
 - **优雅的 API** — Go 惯用风格为主，关键处借鉴 Laravel 的链式调用和表达式路由
 - **服务容器** — 类 Laravel 的依赖注入容器，支持 Singleton、Bind、ServiceProvider
@@ -16,7 +18,7 @@ Gai 是一个 AI 原生的 Go Web 全栈框架，融合 Go 语言的简洁高效
 - **请求校验** — Laravel 风格的管道式校验规则 (required|email|min:5)
 - **内置中间件** — CORS、Logger、Recovery、RateLimit 开箱即用
 - **CLI 工具** — `gai` 命令行工具，项目脚手架、代码生成一键完成
-- **AI 原生开发** — 内置全平台 AI Agent Rules，支持所有主流 AI 编程工具即开即用
+
 
 ## AI 原生开发支持
 
