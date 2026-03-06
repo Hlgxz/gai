@@ -1,0 +1,33 @@
+model: Post
+table: posts
+fields:
+  - name: title
+    type: string
+    size: 200
+    rules: required|min:1|max:200
+  - name: content
+    type: text
+    rules: required
+  - name: user_id
+    type: bigint
+    index: true
+  - name: category
+    type: string
+    size: 50
+    nullable: true
+  - name: status
+    type: enum
+    values: [draft, published, archived]
+    default: "'draft'"
+  - name: view_count
+    type: integer
+    default: "0"
+
+api:
+  prefix: /api/v1/posts
+  actions: [index, show, store, update, destroy]
+  auth: jwt
+
+relations:
+  - type: belongsTo
+    model: User

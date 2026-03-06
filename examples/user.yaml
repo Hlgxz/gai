@@ -1,0 +1,33 @@
+model: User
+table: users
+fields:
+  - name: name
+    type: string
+    size: 100
+    rules: required|min:2|max:50
+  - name: email
+    type: string
+    unique: true
+    rules: required|email
+  - name: phone
+    type: string
+    size: 20
+    rules: phone
+  - name: avatar
+    type: string
+    nullable: true
+  - name: status
+    type: enum
+    values: [active, inactive, banned]
+    default: "'active'"
+
+api:
+  prefix: /api/v1/users
+  actions: [index, show, store, update, destroy]
+  auth: jwt
+
+relations:
+  - type: hasMany
+    model: Post
+  - type: belongsTo
+    model: Role
