@@ -7,17 +7,20 @@ import (
 	ghttp "github.com/Hlgxz/gai/http"
 )
 
-// Router is the core HTTP router with radix-tree-like matching, supporting
+// Router is the core HTTP router with method-bucketed matching, supporting
 // path parameters (:param) and middleware chains.
 type Router struct {
 	routes     []*Route
+	byMethod   map[string][]*Route
 	global     []ghttp.HandlerFunc
 	notFound   ghttp.HandlerFunc
 }
 
 // New creates a new Router.
 func New() *Router {
-	return &Router{}
+	return &Router{
+		byMethod: make(map[string][]*Route),
+	}
 }
 
 // Use adds global middleware applied to every route.
@@ -123,18 +126,22 @@ func (r *Router) addRoute(method, pattern string, handler ghttp.HandlerFunc, mw 
 		segs:        segments(pattern),
 	}
 	r.routes = append(r.routes, route)
+	r.byMethod[method] = append(r.byMethod[method], route)
 	return route
 }
 
 // match finds the first route that matches the given method and path,
-// extracting path parameters.
+// extracting path parameters. Routes are bucketed by method to avoid
+// scanning the entire list.
 func (r *Router) match(method, path string) (*Route, map[string]string) {
+	bucket := r.byMethod[method]
+	if len(bucket) == 0 {
+		return nil, nil
+	}
+
 	reqSegs := segments(path)
 
-	for _, route := range r.routes {
-		if route.Method != method {
-			continue
-		}
+	for _, route := range bucket {
 		if params, ok := matchSegments(route.segs, reqSegs); ok {
 			return route, params
 		}

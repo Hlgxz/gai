@@ -7,7 +7,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -63,7 +62,7 @@ func (p *PayClient) UnifiedOrder(order *Order) (*PayResult, error) {
 	params["sign"] = signMD5(params, cfg.APIKey)
 
 	xmlBody := mapToXML(params)
-	resp, err := http.Post(
+	resp, err := p.client.httpClient.Post(
 		"https://api.mch.weixin.qq.com/pay/unifiedorder",
 		"application/xml",
 		strings.NewReader(xmlBody),

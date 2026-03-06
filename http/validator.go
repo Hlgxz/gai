@@ -3,6 +3,7 @@ package http
 import (
 	"fmt"
 	"net/mail"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -120,7 +121,8 @@ func (v *Validator) Validate() ValidationErrors {
 				}
 			case "url":
 				if s, ok := toString(value); ok {
-					if !strings.HasPrefix(s, "http://") && !strings.HasPrefix(s, "https://") {
+					u, err := url.Parse(s)
+					if err != nil || u.Scheme == "" || u.Host == "" {
 						v.addError(field, fmt.Sprintf("%s must be a valid URL", field))
 					}
 				}

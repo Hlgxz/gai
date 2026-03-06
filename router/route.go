@@ -15,15 +15,9 @@ type Route struct {
 	segs        []string // cached segments from Pattern
 }
 
-// segments splits a URL pattern into its path parts, filtering out empties.
+// segments splits a URL pattern into its path parts.
 func segments(pattern string) []string {
-	var parts []string
-	for _, s := range splitPath(pattern) {
-		if s != "" {
-			parts = append(parts, s)
-		}
-	}
-	return parts
+	return splitPath(pattern)
 }
 
 func splitPath(path string) []string {

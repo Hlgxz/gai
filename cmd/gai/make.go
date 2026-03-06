@@ -75,19 +75,23 @@ func makeMigrationCmd() *cobra.Command {
 			ts := time.Now().Format("20060102150405")
 			filename := ts + "_" + name + ".go"
 
-			ensureMigrationRegistry("database/migrations")
+			if err := ensureMigrationRegistry("database/migrations"); err != nil {
+				return fmt.Errorf("failed to create migration registry: %w", err)
+			}
 
 			return writeTemplate("database/migrations", filename, migrationStub(ts+"_"+name))
 		},
 	}
 }
 
-func ensureMigrationRegistry(dir string) {
+func ensureMigrationRegistry(dir string) error {
 	path := filepath.Join(dir, "registry.go")
 	if _, err := os.Stat(path); err == nil {
-		return
+		return nil
 	}
-	os.MkdirAll(dir, 0o755)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
 	content := `package migrations
 
 import "github.com/Hlgxz/gai/database/migration"
@@ -95,7 +99,7 @@ import "github.com/Hlgxz/gai/database/migration"
 // Migrations collects all migrations registered via init() functions.
 var Migrations []migration.Migration
 `
-	os.WriteFile(path, []byte(content), 0o644)
+	return os.WriteFile(path, []byte(content), 0o644)
 }
 
 func writeTemplate(dir, filename, content string) error {

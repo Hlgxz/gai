@@ -341,7 +341,10 @@ func Create[T any](db *DB, model *T, ctxs ...context.Context) (*T, error) {
 		if err != nil {
 			return nil, fmt.Errorf("gai/orm: insert failed: %w", err)
 		}
-		id, _ = result.LastInsertId()
+		id, err = result.LastInsertId()
+		if err != nil {
+			return nil, fmt.Errorf("gai/orm: failed to get last insert id: %w", err)
+		}
 	}
 
 	setFieldValue(v, "ID", uint64(id))
@@ -474,6 +477,7 @@ func (q *QueryBuilder) buildSelect() (string, []any) {
 			if w.raw != "" {
 				buf.WriteString(w.raw)
 				args = append(args, w.rawArgs...)
+				idx += len(w.rawArgs)
 				continue
 			}
 			if w.operator == "IN" {

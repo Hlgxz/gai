@@ -44,7 +44,9 @@ func (g *Generator) GenerateAll(s *schema.Schema) error {
 		}
 
 		if f.name == "migration" {
-			ensureMigrationRegistry(dir)
+			if err := ensureMigrationRegistry(dir); err != nil {
+				return fmt.Errorf("gai/generator: migration registry failed: %w", err)
+			}
 		}
 
 		var filename string
@@ -70,10 +72,10 @@ func (g *Generator) GenerateAll(s *schema.Schema) error {
 	return nil
 }
 
-func ensureMigrationRegistry(dir string) {
+func ensureMigrationRegistry(dir string) error {
 	path := filepath.Join(dir, "registry.go")
 	if _, err := os.Stat(path); err == nil {
-		return
+		return nil
 	}
 	content := `package migrations
 
@@ -82,7 +84,7 @@ import "github.com/Hlgxz/gai/database/migration"
 // Migrations collects all migrations registered via init() functions.
 var Migrations []migration.Migration
 `
-	os.WriteFile(path, []byte(content), 0o644)
+	return os.WriteFile(path, []byte(content), 0o644)
 }
 
 // GenerateFromDir processes all schema files in a directory.

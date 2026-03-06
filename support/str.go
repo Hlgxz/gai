@@ -49,15 +49,43 @@ func LowerCamel(s string) string {
 	return strings.ToLower(c[:1]) + c[1:]
 }
 
-// Plural returns a naive English plural form.
+var irregularPlurals = map[string]string{
+	"person": "people", "child": "children", "man": "men", "woman": "women",
+	"mouse": "mice", "goose": "geese", "tooth": "teeth", "foot": "feet",
+	"ox": "oxen", "leaf": "leaves", "life": "lives", "knife": "knives",
+	"wife": "wives", "half": "halves", "self": "selves", "shelf": "shelves",
+	"series": "series", "species": "species", "deer": "deer", "sheep": "sheep",
+	"fish": "fish", "datum": "data", "index": "indices", "matrix": "matrices",
+}
+
+// Plural returns an English plural form, handling common irregular nouns
+// and standard suffix rules.
 func Plural(s string) string {
 	if s == "" {
 		return s
 	}
 	lower := strings.ToLower(s)
-	if strings.HasSuffix(lower, "s") || strings.HasSuffix(lower, "x") ||
-		strings.HasSuffix(lower, "sh") || strings.HasSuffix(lower, "ch") {
+
+	if plural, ok := irregularPlurals[lower]; ok {
+		if s[0] == lower[0] {
+			return plural
+		}
+		return strings.ToUpper(plural[:1]) + plural[1:]
+	}
+
+	if strings.HasSuffix(lower, "ss") || strings.HasSuffix(lower, "sh") ||
+		strings.HasSuffix(lower, "ch") || strings.HasSuffix(lower, "x") ||
+		strings.HasSuffix(lower, "z") || strings.HasSuffix(lower, "o") {
 		return s + "es"
+	}
+	if strings.HasSuffix(lower, "s") {
+		return s + "es"
+	}
+	if strings.HasSuffix(lower, "fe") {
+		return s[:len(s)-2] + "ves"
+	}
+	if strings.HasSuffix(lower, "f") {
+		return s[:len(s)-1] + "ves"
 	}
 	if strings.HasSuffix(lower, "y") {
 		runes := []rune(lower)

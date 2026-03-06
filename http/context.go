@@ -152,11 +152,19 @@ func (c *Context) FormFile(key string) (*multipart.FileHeader, error) {
 // maxBodySize is the default limit for reading request bodies (10 MB).
 const maxBodySize = 10 << 20
 
+// ErrBodyTooLarge is returned when the request body exceeds maxBodySize.
+var ErrBodyTooLarge = fmt.Errorf("request body too large (max %d bytes)", maxBodySize)
+
 // readBody reads and caches the request body on first call; subsequent calls
 // return the cached result so Body() and BindJSON() can coexist.
+// Returns ErrBodyTooLarge if the body exceeds maxBodySize.
 func (c *Context) readBody() ([]byte, error) {
 	c.bodyOnce.Do(func() {
-		c.bodyBuf, c.bodyErr = io.ReadAll(io.LimitReader(c.Request.Body, maxBodySize))
+		c.bodyBuf, c.bodyErr = io.ReadAll(io.LimitReader(c.Request.Body, maxBodySize+1))
+		if c.bodyErr == nil && int64(len(c.bodyBuf)) > maxBodySize {
+			c.bodyBuf = nil
+			c.bodyErr = ErrBodyTooLarge
+		}
 	})
 	return c.bodyBuf, c.bodyErr
 }
@@ -166,8 +174,19 @@ func (c *Context) Body() ([]byte, error) {
 	return c.readBody()
 }
 
-// BindJSON decodes the JSON request body into dst, limited to maxBodySize.
+// BindJSON decodes the JSON request body into dst, ignoring unknown fields.
+// This is the recommended default for forward-compatible APIs.
 func (c *Context) BindJSON(dst any) error {
+	body, err := c.readBody()
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(body, dst)
+}
+
+// BindJSONStrict decodes the JSON request body into dst, rejecting any
+// fields not present in dst. Use when strict input validation is required.
+func (c *Context) BindJSONStrict(dst any) error {
 	body, err := c.readBody()
 	if err != nil {
 		return err

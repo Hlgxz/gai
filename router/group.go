@@ -85,15 +85,7 @@ func (g *Group) Resource(prefix string, ctrl ResourceController) {
 
 func (g *Group) addRoute(method, pattern string, handler ghttp.HandlerFunc) *Route {
 	fullPattern := g.prefix + pattern
-	route := &Route{
-		Method:      method,
-		Pattern:     fullPattern,
-		Handler:     handler,
-		Middlewares: copyMiddlewares(g.middlewares),
-		segs:        segments(fullPattern),
-	}
-	g.router.routes = append(g.router.routes, route)
-	return route
+	return g.router.addRoute(method, fullPattern, handler, copyMiddlewares(g.middlewares))
 }
 
 func copyMiddlewares(src []ghttp.HandlerFunc) []ghttp.HandlerFunc {
