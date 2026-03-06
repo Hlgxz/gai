@@ -1,33 +1,33 @@
-# Gai - AI 原生 Go Web 框架
+**English** | [中文](README_zh.md)
 
-> **Define once, generate everything.** — 定义一次，生成一切。
+# Gai - AI-Native Go Web Framework
 
-Gai 是一个 AI 原生的 Go Web 全栈框架，融合 Go 语言的简洁高效与 Laravel 的优雅设计。通过 Schema 驱动开发和 AI 代码生成，让你用声明式的方式定义业务，框架自动推导出 API、数据库迁移、校验规则等全部代码。
+> **Define once, generate everything.**
 
-## 特性
+Gai is an AI-native full-stack Go web framework that blends Go's simplicity with Laravel's elegance. Describe your business with declarative YAML schemas — the framework generates APIs, database migrations, validation rules, and more automatically.
 
-- **AI 原生开发** — 内置全平台 AI Agent Rules，支持所有主流 AI 编程工具即开即用
+## Features
 
-- **Schema 驱动** — 用 YAML 描述业务模型，自动生成 Model、Controller、Migration、Routes
-- **优雅的 API** — Go 惯用风格为主，关键处借鉴 Laravel 的链式调用和表达式路由
-- **服务容器** — 类 Laravel 的依赖注入容器，支持 Singleton、Bind、ServiceProvider
-- **多数据库 ORM** — 链式查询构建器，支持 MySQL、PostgreSQL、SQLite
-- **数据库迁移** — 版本化的数据库迁移系统，支持 Up/Down/Rollback
-- **认证系统** — 多 Guard 设计，内置 JWT + 微信小程序认证
-- **小程序 SDK** — 微信/支付宝小程序登录、支付、消息推送
-- **请求校验** — Laravel 风格的管道式校验规则 (required|email|min:5)
-- **内置中间件** — CORS、Logger、Recovery、RateLimit 开箱即用
-- **CLI 工具** — `gai` 命令行工具，项目脚手架、代码生成一键完成
+- **AI-Native Development** — Built-in rules for all major AI coding tools; every generated project is AI-ready out of the box
+- **Schema-Driven** — Define models in YAML, auto-generate Model, Controller, Migration, and Routes
+- **Elegant API** — Go-idiomatic core with Laravel-inspired chain calls and expressive routing
+- **Service Container** — Laravel-style DI container with Singleton, Bind, and ServiceProvider
+- **Multi-DB ORM** — Generic chainable query builder supporting MySQL, PostgreSQL, and SQLite
+- **Database Migrations** — Versioned migration system with Up/Down/Rollback
+- **Auth System** — Multi-guard design with built-in JWT + WeChat mini-program authentication
+- **Mini-Program SDK** — WeChat / Alipay login, payment, and push notifications
+- **Request Validation** — Laravel-style pipe rules (`required|email|min:5`)
+- **Built-in Middleware** — CORS, Logger, Recovery, RateLimit ready to go
+- **CLI Toolkit** — `gai` command-line tool for scaffolding and code generation
 
+## AI-Native Development
 
-## AI 原生开发支持
+Gai is the first Go framework with built-in rule files for every major AI coding tool. Every project created with `gai new` automatically includes AI rules, so any AI assistant can understand the framework and write correct code from the start.
 
-Gai 是首个为所有主流 AI 编码工具内置规则文件的 Go 框架。`gai new` 创建的每个业务项目都自动包含全平台 AI 规则文件，让任何 AI 编程工具打开项目就能立即理解框架并正确编码。
+### Supported AI Tools
 
-### 支持的 AI 工具
-
-| AI 工具 | 规则文件 |
-|---------|---------|
+| AI Tool | Rule File |
+|---------|-----------|
 | **Cursor** | `.cursor/rules/gai.mdc` |
 | **Claude Code** | `CLAUDE.md` |
 | **GitHub Copilot** | `.github/copilot-instructions.md` |
@@ -38,29 +38,29 @@ Gai 是首个为所有主流 AI 编码工具内置规则文件的 Go 框架。`g
 | **Augment / Antigravity** | `.augment/rules.md` |
 | **Codex CLI** | `AGENTS.md` |
 
-### 一步开始
+### Get Started in One Step
 
-**给任何 AI 编程助手发送：**
+**Send this to any AI coding assistant:**
 
 ```
-请帮我用 Gai 框架 (https://github.com/Hlgxz/gai) 创建一个项目
+Create a project using the Gai framework (https://github.com/Hlgxz/gai)
 ```
 
-AI 会自动执行：
+The AI will automatically:
 1. `go install github.com/Hlgxz/gai/cmd/gai@latest`
 2. `gai new myapp --module github.com/user/myapp`
 3. `cd myapp && go mod tidy`
-4. 项目已包含该 AI 工具的规则文件，立即可以理解框架约定并开始开发
+4. The project already contains the AI tool's rule files — start coding immediately
 
-## 快速开始
+## Quick Start
 
-### 安装 CLI
+### Install CLI
 
 ```bash
 go install github.com/Hlgxz/gai/cmd/gai@latest
 ```
 
-### 创建项目
+### Create a Project
 
 ```bash
 gai new myproject
@@ -69,29 +69,29 @@ go mod tidy
 gai serve
 ```
 
-### 项目结构
+### Project Structure
 
 ```
 myproject/
 ├── app/
-│   ├── controllers/     # 控制器
-│   └── models/          # 模型
+│   ├── controllers/     # HTTP controllers
+│   └── models/          # ORM models
 ├── config/
-│   └── app.yaml         # 配置文件
+│   └── app.yaml         # Configuration (supports ${ENV_VAR:default})
 ├── database/
-│   └── migrations/      # 数据库迁移
+│   └── migrations/      # Database migrations
 ├── routes/
-│   └── routes.go        # 路由注册
-├── schemas/             # Schema 定义文件
-├── storage/             # 存储目录
-├── .env                 # 环境变量
-├── main.go              # 入口文件
+│   └── routes.go        # Route registration
+├── schemas/             # YAML schema definitions
+├── storage/             # Logs, SQLite DB, uploads
+├── .env                 # Environment variables
+├── main.go              # Entry point
 └── go.mod
 ```
 
-## 核心用法
+## Core Usage
 
-### 路由
+### Routing
 
 ```go
 app := gai.New()
@@ -105,14 +105,14 @@ r.Group("/api/v1", func(g *router.Group) {
     g.Get("/users", userCtrl.Index)
     g.Post("/users", userCtrl.Store)
     g.Get("/users/:id", userCtrl.Show)
-    g.Resource("/posts", postCtrl)
+    g.Resource("/posts", postCtrl)  // RESTful resource routes
 })
 ```
 
-### ORM 查询
+### ORM Queries
 
 ```go
-// 链式查询
+// Chain queries
 users, err := orm.Get[User](
     orm.Query[User](db).
         Where("age", ">", 18).
@@ -121,19 +121,19 @@ users, err := orm.Get[User](
         Limit(20),
 )
 
-// 分页
+// Pagination
 page, err := orm.Paginate[User](
     orm.Query[User](db).Where("status", "=", "active"),
     1, 20,
 )
 
-// 创建
-user, err := orm.Create[User](db, &User{Name: "张三", Email: "z@test.com"})
+// Create
+user, err := orm.Create[User](db, &User{Name: "John", Email: "john@example.com"})
 ```
 
-### Schema 驱动开发
+### Schema-Driven Development
 
-创建 `schemas/user.yaml`:
+Create `schemas/user.yaml`:
 
 ```yaml
 model: User
@@ -166,33 +166,33 @@ relations:
     model: Post
 ```
 
-生成代码:
+Generate code:
 
 ```bash
 gai generate --schema schemas/user.yaml
 ```
 
-自动产出:
+Auto-generated files:
 - `app/models/user.go`
 - `app/controllers/user_controller.go`
 - `database/migrations/xxx_create_users_table.go`
 - `routes/user_routes.go`
 
-### 认证
+### Authentication
 
 ```go
 // JWT
 guard := auth.NewJWTGuard("your-secret", 7200)
 token, _ := guard.IssueToken(userID, nil)
 
-// 中间件保护路由
+// Protect routes with middleware
 r.Group("/api", func(g *router.Group) {
     g.Use(authManager.Middleware("jwt"))
     // ...
 })
 ```
 
-### 微信小程序
+### WeChat Mini-Program
 
 ```go
 wc := wechat.NewClient(wechat.Config{
@@ -200,26 +200,26 @@ wc := wechat.NewClient(wechat.Config{
     AppSecret: "your-app-secret",
 })
 
-// 登录
+// Login
 session, err := wc.Auth().Code2Session(code)
 
-// 支付
+// Payment
 result, err := wc.Pay().UnifiedOrder(&wechat.Order{
-    Body:       "商品描述",
+    Body:       "Product description",
     OutTradeNo: "order-001",
     TotalFee:   100,
     OpenID:     session.OpenID,
 })
 
-// 订阅消息
+// Subscribe message
 err = wc.Message().SendSubscribe(&wechat.SubscribeMessage{
     ToUser:     openid,
     TemplateID: "tpl-id",
-    Data:       map[string]wechat.MsgVal{"thing1": {Value: "订单已发货"}},
+    Data:       map[string]wechat.MsgVal{"thing1": {Value: "Order shipped"}},
 })
 ```
 
-### 请求校验
+### Request Validation
 
 ```go
 validator := ghttp.NewValidator(input, map[string]string{
@@ -234,31 +234,31 @@ if errs := validator.Validate(); errs != nil {
 }
 ```
 
-## CLI 命令
+## CLI Commands
 
-| 命令 | 说明 |
-|------|------|
-| `gai new <name>` | 创建新项目 |
-| `gai serve` | 启动开发服务器 |
-| `gai serve -w` | 热重载模式 |
-| `gai make model <Name>` | 生成模型 |
-| `gai make controller <Name>` | 生成控制器 |
-| `gai make middleware <Name>` | 生成中间件 |
-| `gai make migration <name>` | 生成迁移文件 |
-| `gai generate --schema <path>` | 从 Schema 生成代码 |
-| `gai migrate` | 执行数据库迁移 |
-| `gai migrate rollback` | 回滚迁移 |
-| `gai migrate status` | 查看迁移状态 |
+| Command | Description |
+|---------|-------------|
+| `gai new <name>` | Create a new project |
+| `gai serve` | Start development server |
+| `gai serve -w` | Watch mode (auto-restart) |
+| `gai make model <Name>` | Generate a model |
+| `gai make controller <Name>` | Generate a controller |
+| `gai make middleware <Name>` | Generate middleware |
+| `gai make migration <name>` | Generate a migration file |
+| `gai generate --schema <path>` | Generate code from schema |
+| `gai migrate` | Run database migrations |
+| `gai migrate rollback` | Rollback last migration batch |
+| `gai migrate status` | Show migration status |
 
-## 技术栈
+## Tech Stack
 
-- **HTTP**: 基于 `net/http`，零第三方路由依赖
-- **数据库**: `database/sql` + MySQL / PostgreSQL / SQLite 驱动
-- **配置**: YAML + .env 环境变量
+- **HTTP**: Built on `net/http` — zero third-party router dependencies
+- **Database**: `database/sql` + MySQL / PostgreSQL / SQLite drivers
+- **Config**: YAML + `.env` environment variables
 - **JWT**: `github.com/golang-jwt/jwt/v5`
 - **CLI**: `github.com/spf13/cobra`
-- **日志**: `log/slog` (Go 标准库)
+- **Logging**: `log/slog` (Go standard library)
 
-## 许可证
+## License
 
 MIT License
