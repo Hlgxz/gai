@@ -1,0 +1,15 @@
+# Cline / Roo Code Rules — Gai Framework (github.com/Hlgxz/gai)
+#
+# AI-native Go web framework. Setup: go mod tidy && go build ./...
+#
+# CRITICAL: Always import github.com/Hlgxz/gai/http as ghttp.
+# Handler signature: func(c *ghttp.Context).
+# ORM uses generics: orm.Query[T](db), orm.Get[T](q), orm.Create[T](db, &item).
+# Models embed orm.Model with gai:"..." struct tags.
+# Routes: r.Get("/path/:param", handler), r.Group(), r.Resource().
+# Middleware: return ghttp.HandlerFunc, call c.Next().
+# Validation: ghttp.NewValidator(data, rules) with pipe syntax.
+# Schema: YAML in schemas/ → gai generate --schema schemas/.
+# Files: snake_case.go. Tables: auto plural snake_case.
+# No init() outside database/driver/. Use ServiceProvider.
+# See CLAUDE.md or AGENTS.md for full documentation.

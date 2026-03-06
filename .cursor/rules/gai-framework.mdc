@@ -1,0 +1,150 @@
+---
+description: Gai framework core architecture, conventions, and patterns. Apply when working on any Go file in this repository.
+globs: "**/*.go"
+alwaysApply: true
+---
+
+# Gai Framework — AI-Native Go Web Framework
+
+## Identity
+
+- **Name**: Gai (Go + AI)
+- **Repo**: github.com/Hlgxz/gai
+- **Module**: `github.com/Hlgxz/gai`
+- **Philosophy**: "Define once, generate everything." — Schema-driven + AI code generation
+- **Style**: Go idiomatic with Laravel-inspired elegance (chain calls, service container, expressive routing)
+
+## Quick Setup (Run This First)
+
+```bash
+git clone https://github.com/Hlgxz/gai.git
+cd gai
+go mod tidy
+go build ./...          # verify compilation
+go run ./cmd/gai --help # verify CLI
+```
+
+## Architecture Overview
+
+```
+gai/                           # Root package — Application, Container, Provider
+├── cmd/gai/                   # CLI tool (cobra-based)
+├── config/                    # YAML + .env config management
+├── router/                    # HTTP router with groups & middleware
+├── http/                      # Context, Validator
+├── database/
+│   ├── driver/                # Multi-DB abstraction (MySQL/PG/SQLite)
+│   ├── orm/                   # Generic query builder, Model, Relations
+│   └── migration/             # Migration engine + Blueprint schema
+├── auth/                      # Multi-guard auth (JWT + extensible)
+├── miniapp/
+│   ├── wechat/                # WeChat mini-program SDK
+│   └── alipay/                # Alipay mini-program SDK
+├── ai/
+│   ├── schema/                # YAML schema parser
+│   └── generator/             # Code generator (Model/Controller/Migration/Routes)
+├── middleware/                 # Built-in: CORS, Logger, Recovery, RateLimit
+└── support/                   # Utilities: env, hash, string helpers
+```
+
+## Core Design Patterns
+
+### 1. Application Kernel (app.go)
+The `Application` struct is the framework's heart — it embeds the DI `Container` and wires up config, router, and providers.
+
+```go
+app := gai.New()
+app.LoadConfig("config")
+app.UseDefaults()       // Recovery + Logger + CORS
+app.Register(&MyProvider{})
+app.Serve(":8080")
+```
+
+### 2. DI Container (container.go)
+Generic dependency injection with `Bind`, `Singleton`, `Instance`, and type-safe `Make[T]`.
+
+```go
+app.Singleton("db", func(c *gai.Container) any { return orm.NewDB(sqlDB, "mysql") })
+db := gai.Make[*orm.DB](app.Container, "db")
+```
+
+### 3. Router (router/)
+Path params use `:param` syntax. Groups share prefix + middleware. `Resource()` generates RESTful routes.
+
+```go
+r.Group("/api/v1", func(g *router.Group) {
+    g.Use(authManager.Middleware("jwt"))
+    g.Resource("/users", userController)
+})
+```
+
+### 4. HTTP Context (http/context.go)
+`HandlerFunc = func(c *ghttp.Context)` — the central handler signature. Always import as `ghttp`.
+
+```go
+import ghttp "github.com/Hlgxz/gai/http"
+```
+
+Key methods: `c.Param()`, `c.Query()`, `c.BindJSON()`, `c.JSON()`, `c.Success()`, `c.Error()`, `c.Next()`, `c.Abort()`.
+
+### 5. ORM (database/orm/)
+Generic query builder. Always use the package-level generic functions.
+
+```go
+users, _ := orm.Get[User](orm.Query[User](db).Where("status", "=", "active"))
+user, _ := orm.First[User](orm.Query[User](db).Where("id", "=", id))
+page, _ := orm.Paginate[User](orm.Query[User](db), 1, 20)
+created, _ := orm.Create[User](db, &User{Name: "test"})
+```
+
+### 6. Model Definition
+Embed `orm.Model` for ID + timestamps + soft delete. Use `gai` struct tags.
+
+```go
+type User struct {
+    orm.Model
+    Name  string `json:"name"  gai:"column:name;size:100"`
+    Email string `json:"email" gai:"column:email;unique"`
+    Posts []Post `json:"-"     gai:"hasMany"`
+}
+```
+
+### 7. Schema-Driven Development
+Define YAML schema → run `gai generate --schema <path>` → get Model + Controller + Migration + Routes.
+
+### 8. Validation
+Laravel-style pipe rules: `required|email|min:5|max:100|in:a,b,c|phone|regex:pattern`.
+
+## Code Conventions
+
+- **Imports**: Always alias `github.com/Hlgxz/gai/http` as `ghttp` to avoid collision with `net/http`.
+- **Handler signature**: `func(c *ghttp.Context)`, never raw `http.HandlerFunc`.
+- **Error responses**: Use `c.Error(code, message)` for standardized `{code, message}` envelopes.
+- **Success responses**: Use `c.Success(data)` for `{code: 0, message: "ok", data: ...}` envelopes.
+- **Struct tags**: Use `gai:"..."` for ORM metadata, `json:"..."` for serialization.
+- **Table naming**: Auto-derived from struct name via `support.Snake` + `support.Plural` (User → users).
+- **File naming**: snake_case for Go files (user_controller.go, not UserController.go).
+- **Package naming**: short, lowercase, single-word when possible.
+- **No `init()` outside of driver registration** — use ServiceProvider pattern instead.
+
+## Adding New Features — Checklist
+
+1. **New Model**: Create struct embedding `orm.Model` in `database/orm/` or user's `app/models/`.
+2. **New Route**: Add to router via `r.Get()`, `r.Post()`, `r.Group()`, `r.Resource()`.
+3. **New Middleware**: Return `ghttp.HandlerFunc` that calls `c.Next()`.
+4. **New Guard**: Implement the `auth.Guard` interface, register via `authManager.RegisterGuard()`.
+5. **New DB Driver**: Implement `driver.Driver` interface, call `driver.Register()` in `init()`.
+6. **New CLI Command**: Add cobra command in `cmd/gai/`, register in `main.go`.
+7. **Schema-driven**: Write YAML in `schemas/`, run `gai generate`.
+
+## Key Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| `gopkg.in/yaml.v3` | Config + schema parsing |
+| `github.com/golang-jwt/jwt/v5` | JWT tokens |
+| `github.com/spf13/cobra` | CLI framework |
+| `github.com/go-sql-driver/mysql` | MySQL driver |
+| `github.com/lib/pq` | PostgreSQL driver |
+| `modernc.org/sqlite` | SQLite (pure Go) |
+| `golang.org/x/crypto` | bcrypt hashing |

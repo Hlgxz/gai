@@ -16,6 +16,31 @@ Gai 是一个 AI 原生的 Go Web 全栈框架，融合 Go 语言的简洁高效
 - **请求校验** — Laravel 风格的管道式校验规则 (required|email|min:5)
 - **内置中间件** — CORS、Logger、Recovery、RateLimit 开箱即用
 - **CLI 工具** — `gai` 命令行工具，项目脚手架、代码生成一键完成
+- **AI 原生开发** — 内置全平台 AI Agent Rules，支持所有主流 AI 编程工具即开即用
+
+## AI 原生开发支持
+
+Gai 为所有主流 AI 编码工具内置了框架规则文件，给 AI 这个仓库地址即可一步完成环境安装并立即开始开发：
+
+| AI 工具 | 规则文件 | 说明 |
+|---------|---------|------|
+| **Cursor** | `.cursor/rules/gai-framework.mdc` | 完整框架规则 + Schema 开发 + 快速上手 |
+| **Claude Code** | `CLAUDE.md` | 架构、约定、模式速查 |
+| **GitHub Copilot** | `.github/copilot-instructions.md` | 包引用表 + 代码风格 |
+| **Windsurf** | `.windsurfrules` | 核心约定 + CLI 命令 |
+| **Kiro** | `.kiro/rules.md` | API 速查表 + 工作流 |
+| **Gemini / Qoder** | `.gemini/style-guide.md` | 项目结构 + 强制规则 |
+| **Roo Code / Cline** | `.roo/rules.md` + `.clinerules` | 包映射表 + 约定 |
+| **Augment / Antigravity** | `.augment/rules.md` | 架构层次 + 禁止模式 |
+| **Codex CLI** | `AGENTS.md` | 通用 Agent 指令 |
+
+**给任何 AI 助手发送以下内容即可开始：**
+
+```
+请克隆 https://github.com/Hlgxz/gai.git 并帮我基于这个框架开发一个项目
+```
+
+AI 会自动读取对应的规则文件，理解框架架构，并按照 Gai 的约定来编写代码。
 
 ## 快速开始
 
