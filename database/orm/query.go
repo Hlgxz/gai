@@ -94,31 +94,31 @@ func (q *QueryBuilder) Select(columns ...string) *QueryBuilder {
 
 // Where adds an AND condition.
 func (q *QueryBuilder) Where(column, operator string, value any) *QueryBuilder {
-	q.wheres = append(q.wheres, whereClause{column: column, operator: operator, value: value, boolean: "AND"})
+	q.wheres = append(q.wheres, whereClause{column: safeColumn(column), operator: sanitizeOperator(operator), value: value, boolean: "AND"})
 	return q
 }
 
 // OrWhere adds an OR condition.
 func (q *QueryBuilder) OrWhere(column, operator string, value any) *QueryBuilder {
-	q.wheres = append(q.wheres, whereClause{column: column, operator: operator, value: value, boolean: "OR"})
+	q.wheres = append(q.wheres, whereClause{column: safeColumn(column), operator: sanitizeOperator(operator), value: value, boolean: "OR"})
 	return q
 }
 
 // WhereNull adds an IS NULL condition.
 func (q *QueryBuilder) WhereNull(column string) *QueryBuilder {
-	q.wheres = append(q.wheres, whereClause{raw: column + " IS NULL", boolean: "AND"})
+	q.wheres = append(q.wheres, whereClause{raw: safeColumn(column) + " IS NULL", boolean: "AND"})
 	return q
 }
 
 // WhereNotNull adds an IS NOT NULL condition.
 func (q *QueryBuilder) WhereNotNull(column string) *QueryBuilder {
-	q.wheres = append(q.wheres, whereClause{raw: column + " IS NOT NULL", boolean: "AND"})
+	q.wheres = append(q.wheres, whereClause{raw: safeColumn(column) + " IS NOT NULL", boolean: "AND"})
 	return q
 }
 
 // WhereIn adds a WHERE column IN (...) condition.
 func (q *QueryBuilder) WhereIn(column string, values ...any) *QueryBuilder {
-	q.wheres = append(q.wheres, whereClause{column: column, operator: "IN", value: values, boolean: "AND"})
+	q.wheres = append(q.wheres, whereClause{column: safeColumn(column), operator: "IN", value: values, boolean: "AND"})
 	return q
 }
 
@@ -130,7 +130,11 @@ func (q *QueryBuilder) WhereRaw(raw string) *QueryBuilder {
 
 // OrderBy adds an ORDER BY clause.
 func (q *QueryBuilder) OrderBy(column, direction string) *QueryBuilder {
-	q.orders = append(q.orders, orderClause{column: column, direction: strings.ToUpper(direction)})
+	dir := strings.ToUpper(direction)
+	if dir != "ASC" && dir != "DESC" {
+		dir = "ASC"
+	}
+	q.orders = append(q.orders, orderClause{column: safeColumn(column), direction: dir})
 	return q
 }
 
@@ -148,13 +152,15 @@ func (q *QueryBuilder) Offset(n int) *QueryBuilder {
 
 // GroupBy adds GROUP BY columns.
 func (q *QueryBuilder) GroupBy(columns ...string) *QueryBuilder {
-	q.groupBy = append(q.groupBy, columns...)
+	for _, col := range columns {
+		q.groupBy = append(q.groupBy, safeColumn(col))
+	}
 	return q
 }
 
 // Having adds a HAVING clause.
 func (q *QueryBuilder) Having(column, operator string, value any) *QueryBuilder {
-	q.having = append(q.having, whereClause{column: column, operator: operator, value: value, boolean: "AND"})
+	q.having = append(q.having, whereClause{column: safeColumn(column), operator: sanitizeOperator(operator), value: value, boolean: "AND"})
 	return q
 }
 
@@ -170,6 +176,18 @@ func (q *QueryBuilder) Scope(scopes ...Scope) *QueryBuilder {
 func (q *QueryBuilder) WithTrashed() *QueryBuilder {
 	q.softDelete = false
 	return q
+}
+
+// clone returns a shallow copy of the QueryBuilder so that terminal
+// operations like Count and Paginate do not mutate the caller's query.
+func (q *QueryBuilder) clone() *QueryBuilder {
+	c := *q
+	c.selects = append([]string(nil), q.selects...)
+	c.wheres = append([]whereClause(nil), q.wheres...)
+	c.orders = append([]orderClause(nil), q.orders...)
+	c.groupBy = append([]string(nil), q.groupBy...)
+	c.having = append([]whereClause(nil), q.having...)
+	return &c
 }
 
 // ---------------------------------------------------------- Terminal operations
@@ -198,12 +216,13 @@ func First[T any](q *QueryBuilder) (*T, error) {
 	return &items[0], nil
 }
 
-// Count returns the number of matching rows.
+// Count returns the number of matching rows without mutating the original query.
 func Count(q *QueryBuilder) (int, error) {
-	origSelects := q.selects
-	q.selects = []string{"COUNT(*) AS cnt"}
-	query, args := q.buildSelect()
-	q.selects = origSelects
+	cq := q.clone()
+	cq.selects = []string{"COUNT(*) AS cnt"}
+	cq.limitVal = 0
+	cq.offsetVal = 0
+	query, args := cq.buildSelect()
 
 	var count int
 	if err := q.db.SQL.QueryRow(query, args...).Scan(&count); err != nil {
@@ -213,6 +232,7 @@ func Count(q *QueryBuilder) (int, error) {
 }
 
 // Paginate returns a paginated result. Page is 1-based.
+// The original QueryBuilder is not mutated.
 func Paginate[T any](q *QueryBuilder, page, perPage int) (*Pagination[T], error) {
 	if page < 1 {
 		page = 1
@@ -226,10 +246,11 @@ func Paginate[T any](q *QueryBuilder, page, perPage int) (*Pagination[T], error)
 		return nil, err
 	}
 
-	q.limitVal = perPage
-	q.offsetVal = (page - 1) * perPage
+	pq := q.clone()
+	pq.limitVal = perPage
+	pq.offsetVal = (page - 1) * perPage
 
-	items, err := Get[T](q)
+	items, err := Get[T](pq)
 	if err != nil {
 		return nil, err
 	}
@@ -283,12 +304,20 @@ func Create[T any](db *DB, model *T) (*T, error) {
 		strings.Join(placeholders, ", "),
 	)
 
-	result, err := db.SQL.Exec(query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("gai/orm: insert failed: %w", err)
+	var id int64
+	if db.DriverName == "postgres" {
+		query += " RETURNING id"
+		if err := db.SQL.QueryRow(query, args...).Scan(&id); err != nil {
+			return nil, fmt.Errorf("gai/orm: insert failed: %w", err)
+		}
+	} else {
+		result, err := db.SQL.Exec(query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("gai/orm: insert failed: %w", err)
+		}
+		id, _ = result.LastInsertId()
 	}
 
-	id, _ := result.LastInsertId()
 	setFieldValue(v, "ID", uint64(id))
 	setFieldValue(v, "CreatedAt", now)
 	setFieldValue(v, "UpdatedAt", now)
@@ -564,4 +593,30 @@ func placeholder(driver string, n int) string {
 		return fmt.Sprintf("$%d", n)
 	}
 	return "?"
+}
+
+var validOperators = map[string]bool{
+	"=": true, "!=": true, "<>": true,
+	">": true, "<": true, ">=": true, "<=": true,
+	"LIKE": true, "like": true, "NOT LIKE": true, "not like": true,
+	"IN": true, "in": true,
+	"IS": true, "is": true, "IS NOT": true, "is not": true,
+}
+
+func sanitizeOperator(op string) string {
+	if validOperators[op] {
+		return op
+	}
+	return "="
+}
+
+func safeColumn(col string) string {
+	var buf strings.Builder
+	for _, r := range col {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '_' || r == '.' {
+			buf.WriteRune(r)
+		}
+	}
+	return buf.String()
 }

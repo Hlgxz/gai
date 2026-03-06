@@ -1,6 +1,7 @@
 package alipay
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -42,7 +43,10 @@ func (c *Client) doGet(url string, result any) error {
 		return err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("alipay: failed to read response body: %w", err)
+	}
 	return json.Unmarshal(body, result)
 }
 
@@ -52,28 +56,16 @@ func (c *Client) doPostJSON(url string, payload any, result any) error {
 		return err
 	}
 
-	resp, err := c.httpClient.Post(url, "application/json",
-		io.NopCloser(&bytesReader{data: data}))
+	resp, err := c.httpClient.Post(url, "application/json", bytes.NewReader(data))
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	return json.Unmarshal(body, result)
-}
-
-type bytesReader struct {
-	data []byte
-	pos  int
-}
-
-func (r *bytesReader) Read(p []byte) (n int, err error) {
-	if r.pos >= len(r.data) {
-		return 0, io.EOF
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("alipay: failed to read response body: %w", err)
 	}
-	n = copy(p, r.data[r.pos:])
-	r.pos += n
-	return n, nil
+	return json.Unmarshal(body, result)
 }
 
 // SystemOauthToken exchanges an auth_code for access token.

@@ -3,6 +3,7 @@ package driver
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -23,7 +24,7 @@ func (MySQL) Open(dsn string) (*sql.DB, error) {
 func (MySQL) Placeholder(_ int) string { return "?" }
 
 func (MySQL) QuoteIdent(name string) string {
-	return "`" + name + "`"
+	return "`" + strings.ReplaceAll(name, "`", "``") + "`"
 }
 
 func (MySQL) AutoIncrementType() string {

@@ -165,22 +165,18 @@ type MigrationStatus struct {
 
 // ---------------------------------------------------------- Internal
 
+func (m *Migrator) ph(n int) string {
+	return m.driver.Placeholder(n)
+}
+
 func (m *Migrator) ensureTable() error {
-	sql := `CREATE TABLE IF NOT EXISTS migrations (
-		id INTEGER PRIMARY KEY,
+	ddl := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS migrations (
+		id %s,
 		migration VARCHAR(255) NOT NULL,
 		batch INTEGER NOT NULL,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-	)`
-	if m.driver.Name() == "mysql" {
-		sql = `CREATE TABLE IF NOT EXISTS migrations (
-			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-			migration VARCHAR(255) NOT NULL,
-			batch INTEGER NOT NULL,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)`
-	}
-	_, err := m.db.Exec(sql)
+	)`, m.driver.AutoIncrementType())
+	_, err := m.db.Exec(ddl)
 	return err
 }
 
@@ -215,7 +211,8 @@ func (m *Migrator) lastBatch() (int, error) {
 }
 
 func (m *Migrator) batchMigrations(batch int) ([]string, error) {
-	rows, err := m.db.Query("SELECT migration FROM migrations WHERE batch = ? ORDER BY migration", batch)
+	q := fmt.Sprintf("SELECT migration FROM migrations WHERE batch = %s ORDER BY migration", m.ph(1))
+	rows, err := m.db.Query(q, batch)
 	if err != nil {
 		return nil, err
 	}
@@ -233,12 +230,14 @@ func (m *Migrator) batchMigrations(batch int) ([]string, error) {
 }
 
 func (m *Migrator) record(name string, batch int) error {
-	_, err := m.db.Exec("INSERT INTO migrations (migration, batch, created_at) VALUES (?, ?, ?)",
-		name, batch, time.Now())
+	q := fmt.Sprintf("INSERT INTO migrations (migration, batch, created_at) VALUES (%s, %s, %s)",
+		m.ph(1), m.ph(2), m.ph(3))
+	_, err := m.db.Exec(q, name, batch, time.Now())
 	return err
 }
 
 func (m *Migrator) removeRecord(name string) error {
-	_, err := m.db.Exec("DELETE FROM migrations WHERE migration = ?", name)
+	q := fmt.Sprintf("DELETE FROM migrations WHERE migration = %s", m.ph(1))
+	_, err := m.db.Exec(q, name)
 	return err
 }

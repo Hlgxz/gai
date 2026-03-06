@@ -3,6 +3,7 @@ package driver
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -24,7 +25,7 @@ func (SQLite) Open(dsn string) (*sql.DB, error) {
 func (SQLite) Placeholder(_ int) string { return "?" }
 
 func (SQLite) QuoteIdent(name string) string {
-	return `"` + name + `"`
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
 
 func (SQLite) AutoIncrementType() string {

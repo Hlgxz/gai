@@ -3,6 +3,7 @@ package driver
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "github.com/lib/pq"
 )
@@ -25,7 +26,7 @@ func (Postgres) Placeholder(n int) string {
 }
 
 func (Postgres) QuoteIdent(name string) string {
-	return `"` + name + `"`
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
 
 func (Postgres) AutoIncrementType() string {

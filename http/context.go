@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -230,7 +231,9 @@ func (c *Context) JSON(code int, obj any) {
 	c.Writer.WriteHeader(code)
 	c.written = true
 	if err := json.NewEncoder(c.Writer).Encode(obj); err != nil {
-		http.Error(c.Writer, err.Error(), http.StatusInternalServerError)
+		// Header already sent; log instead of calling http.Error which
+		// would trigger a superfluous WriteHeader warning.
+		slog.Error("gai: failed to encode JSON response", "error", err)
 	}
 }
 

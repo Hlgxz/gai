@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"sync"
 	"time"
@@ -13,28 +14,49 @@ type visitor struct {
 	lastVisit time.Time
 }
 
+// RateLimiter holds the state for rate limiting and exposes a Stop method
+// so the background cleanup goroutine can be shut down cleanly.
+type RateLimiter struct {
+	cancel context.CancelFunc
+}
+
+// Stop terminates the background cleanup goroutine.
+func (rl *RateLimiter) Stop() {
+	rl.cancel()
+}
+
 // RateLimit returns token-bucket rate limiting middleware.
 // limit is the max requests per window, and window is the refill period.
-func RateLimit(limit int, window time.Duration) ghttp.HandlerFunc {
+// The returned RateLimiter should be kept so its Stop method can be called
+// during graceful shutdown.
+func RateLimit(limit int, window time.Duration) (ghttp.HandlerFunc, *RateLimiter) {
 	var mu sync.Mutex
 	visitors := make(map[string]*visitor)
 	rate := float64(limit) / window.Seconds()
 
-	// Background cleanup of stale entries.
+	ctx, cancel := context.WithCancel(context.Background())
+	rl := &RateLimiter{cancel: cancel}
+
 	go func() {
+		ticker := time.NewTicker(window * 2)
+		defer ticker.Stop()
 		for {
-			time.Sleep(window * 2)
-			mu.Lock()
-			for ip, v := range visitors {
-				if time.Since(v.lastVisit) > window*2 {
-					delete(visitors, ip)
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				mu.Lock()
+				for ip, v := range visitors {
+					if time.Since(v.lastVisit) > window*2 {
+						delete(visitors, ip)
+					}
 				}
+				mu.Unlock()
 			}
-			mu.Unlock()
 		}
 	}()
 
-	return func(c *ghttp.Context) {
+	handler := func(c *ghttp.Context) {
 		ip := c.ClientIP()
 
 		mu.Lock()
@@ -66,4 +88,6 @@ func RateLimit(limit int, window time.Duration) ghttp.HandlerFunc {
 
 		c.Next()
 	}
+
+	return handler, rl
 }

@@ -71,15 +71,20 @@ func (c *Container) Resolve(name string) (any, error) {
 		return nil, fmt.Errorf("gai: no binding found for [%s]", name)
 	}
 
-	instance := b.resolver(c)
-
 	if b.singleton {
 		c.mu.Lock()
+		// Double-check: another goroutine may have resolved while we waited.
+		if inst, ok := c.instances[name]; ok {
+			c.mu.Unlock()
+			return inst, nil
+		}
+		instance := b.resolver(c)
 		c.instances[name] = instance
 		c.mu.Unlock()
+		return instance, nil
 	}
 
-	return instance, nil
+	return b.resolver(c), nil
 }
 
 // MustResolve is like Resolve but panics on failure.

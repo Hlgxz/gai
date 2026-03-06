@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -89,10 +88,3 @@ func splitLines(s string) []string {
 	return lines
 }
 
-// Ensure the schemas directory is checked relative to cwd.
-func init() {
-	if _, err := os.Stat("schemas"); os.IsNotExist(err) {
-		p, _ := filepath.Abs("schemas")
-		_ = p
-	}
-}

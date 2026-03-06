@@ -2,6 +2,7 @@ package wechat
 
 import (
 	"crypto/md5"
+	"crypto/rand"
 	"encoding/hex"
 	"encoding/xml"
 	"fmt"
@@ -167,7 +168,10 @@ func parseXMLToMap(data []byte, m map[string]string) error {
 	for {
 		tok, err := decoder.Token()
 		if err != nil {
-			break
+			if err == io.EOF {
+				break
+			}
+			return fmt.Errorf("wechat/pay: xml parse error: %w", err)
 		}
 		switch t := tok.(type) {
 		case xml.StartElement:
@@ -187,5 +191,9 @@ func parseXMLToMap(data []byte, m map[string]string) error {
 }
 
 func randomNonce() string {
-	return fmt.Sprintf("%x", md5.Sum([]byte(fmt.Sprintf("%d", time.Now().UnixNano()))))
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		panic(fmt.Sprintf("wechat/pay: failed to generate random nonce: %v", err))
+	}
+	return hex.EncodeToString(b)
 }

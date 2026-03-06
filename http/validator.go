@@ -204,7 +204,7 @@ func toString(v any) (string, bool) {
 	case fmt.Stringer:
 		return val.String(), true
 	default:
-		return fmt.Sprintf("%v", val), true
+		return "", false
 	}
 }
 

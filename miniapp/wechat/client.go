@@ -1,6 +1,7 @@
 package wechat
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -107,7 +108,10 @@ func (c *Client) doGet(url string, result any) error {
 		return err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("wechat: failed to read response body: %w", err)
+	}
 	return json.Unmarshal(body, result)
 }
 
@@ -118,31 +122,14 @@ func (c *Client) doPostJSON(url string, payload any, result any) error {
 		return err
 	}
 
-	resp, err := c.httpClient.Post(url, "application/json", io.NopCloser(
-		io.Reader(jsonReader(data)),
-	))
+	resp, err := c.httpClient.Post(url, "application/json", bytes.NewReader(data))
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	return json.Unmarshal(body, result)
-}
-
-type bytesReader struct {
-	data []byte
-	pos  int
-}
-
-func jsonReader(data []byte) *bytesReader {
-	return &bytesReader{data: data}
-}
-
-func (r *bytesReader) Read(p []byte) (n int, err error) {
-	if r.pos >= len(r.data) {
-		return 0, io.EOF
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("wechat: failed to read response body: %w", err)
 	}
-	n = copy(p, r.data[r.pos:])
-	r.pos += n
-	return n, nil
+	return json.Unmarshal(body, result)
 }

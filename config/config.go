@@ -150,8 +150,8 @@ func (m *Manager) Set(key string, value any) {
 			next = make(map[string]any)
 			current[part] = next
 		}
-		if m, ok := next.(map[string]any); ok {
-			current = m
+		if nested, ok := next.(map[string]any); ok {
+			current = nested
 		} else {
 			nm := make(map[string]any)
 			current[part] = nm
