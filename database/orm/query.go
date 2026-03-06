@@ -1,6 +1,7 @@
 package orm
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"reflect"
@@ -37,6 +38,7 @@ type Pagination[T any] struct {
 // inspired by Laravel's Eloquent query builder.
 type QueryBuilder struct {
 	db         *DB
+	ctx        context.Context
 	table      string
 	selects    []string
 	wheres     []whereClause
@@ -74,6 +76,7 @@ func Query[T any](db *DB) *QueryBuilder {
 
 	qb := &QueryBuilder{
 		db:        db,
+		ctx:       context.Background(),
 		table:     TableName(zero),
 		modelType: t,
 	}
@@ -92,7 +95,13 @@ func Query[T any](db *DB) *QueryBuilder {
 
 // Table creates a raw QueryBuilder for a table (no model binding).
 func Table(db *DB, table string) *QueryBuilder {
-	return &QueryBuilder{db: db, table: table}
+	return &QueryBuilder{db: db, ctx: context.Background(), table: table}
+}
+
+// WithContext sets the context for all SQL operations in this query.
+func (q *QueryBuilder) WithContext(ctx context.Context) *QueryBuilder {
+	q.ctx = ctx
+	return q
 }
 
 // ---------------------------------------------------------- Chainable
@@ -206,7 +215,7 @@ func (q *QueryBuilder) clone() *QueryBuilder {
 // Get executes the query and returns all matching rows scanned into T.
 func Get[T any](q *QueryBuilder) ([]T, error) {
 	query, args := q.buildSelect()
-	rows, err := q.db.SQL.Query(query, args...)
+	rows, err := q.db.SQL.QueryContext(q.ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("gai/orm: query failed: %w", err)
 	}
@@ -237,7 +246,7 @@ func Count(q *QueryBuilder) (int, error) {
 	query, args := cq.buildSelect()
 
 	var count int
-	if err := q.db.SQL.QueryRow(query, args...).Scan(&count); err != nil {
+	if err := q.db.SQL.QueryRowContext(q.ctx, query, args...).Scan(&count); err != nil {
 		return 0, fmt.Errorf("gai/orm: count failed: %w", err)
 	}
 	return count, nil
@@ -284,7 +293,12 @@ func Paginate[T any](q *QueryBuilder, page, perPage int) (*Pagination[T], error)
 // ---------------------------------------------------------- CRUD helpers
 
 // Create inserts a new record and returns it with the generated ID.
-func Create[T any](db *DB, model *T) (*T, error) {
+func Create[T any](db *DB, model *T, ctxs ...context.Context) (*T, error) {
+	ctx := context.Background()
+	if len(ctxs) > 0 {
+		ctx = ctxs[0]
+	}
+
 	table := TableName(*model)
 	fields := ParseFields(*model)
 
@@ -319,11 +333,11 @@ func Create[T any](db *DB, model *T) (*T, error) {
 	var id int64
 	if db.DriverName == "postgres" {
 		query += " RETURNING id"
-		if err := db.SQL.QueryRow(query, args...).Scan(&id); err != nil {
+		if err := db.SQL.QueryRowContext(ctx, query, args...).Scan(&id); err != nil {
 			return nil, fmt.Errorf("gai/orm: insert failed: %w", err)
 		}
 	} else {
-		result, err := db.SQL.Exec(query, args...)
+		result, err := db.SQL.ExecContext(ctx, query, args...)
 		if err != nil {
 			return nil, fmt.Errorf("gai/orm: insert failed: %w", err)
 		}
@@ -338,7 +352,12 @@ func Create[T any](db *DB, model *T) (*T, error) {
 }
 
 // Update saves changes to an existing record (identified by ID).
-func Update[T any](db *DB, model *T) error {
+func Update[T any](db *DB, model *T, ctxs ...context.Context) error {
+	ctx := context.Background()
+	if len(ctxs) > 0 {
+		ctx = ctxs[0]
+	}
+
 	table := TableName(*model)
 	fields := ParseFields(*model)
 	v := reflect.ValueOf(model).Elem()
@@ -375,7 +394,7 @@ func Update[T any](db *DB, model *T) error {
 		placeholder(db.DriverName, idx),
 	)
 
-	_, err := db.SQL.Exec(query, args...)
+	_, err := db.SQL.ExecContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("gai/orm: update failed: %w", err)
 	}
@@ -385,7 +404,12 @@ func Update[T any](db *DB, model *T) error {
 
 // Delete removes a record. If the model supports soft deletes, it sets
 // deleted_at instead of actually removing the row.
-func Delete[T any](db *DB, model *T) error {
+func Delete[T any](db *DB, model *T, ctxs ...context.Context) error {
+	ctx := context.Background()
+	if len(ctxs) > 0 {
+		ctx = ctxs[0]
+	}
+
 	table := TableName(*model)
 	fields := ParseFields(*model)
 	v := reflect.ValueOf(model).Elem()
@@ -405,14 +429,18 @@ func Delete[T any](db *DB, model *T) error {
 		query := fmt.Sprintf("UPDATE %s SET %s = %s WHERE %s = %s",
 			db.quote(table), db.quote("deleted_at"), placeholder(db.DriverName, 1),
 			db.quote("id"), placeholder(db.DriverName, 2))
-		_, err := db.SQL.Exec(query, now, idVal)
-		return err
+		if _, err := db.SQL.ExecContext(ctx, query, now, idVal); err != nil {
+			return fmt.Errorf("gai/orm: soft delete failed: %w", err)
+		}
+		return nil
 	}
 
 	query := fmt.Sprintf("DELETE FROM %s WHERE %s = %s",
 		db.quote(table), db.quote("id"), placeholder(db.DriverName, 1))
-	_, err := db.SQL.Exec(query, idVal)
-	return err
+	if _, err := db.SQL.ExecContext(ctx, query, idVal); err != nil {
+		return fmt.Errorf("gai/orm: delete failed: %w", err)
+	}
+	return nil
 }
 
 // ---------------------------------------------------------- SQL Building
@@ -449,7 +477,10 @@ func (q *QueryBuilder) buildSelect() (string, []any) {
 				continue
 			}
 			if w.operator == "IN" {
-				vals := w.value.([]any)
+				vals, ok := w.value.([]any)
+				if !ok {
+					continue
+				}
 				phs := make([]string, len(vals))
 				for j, v := range vals {
 					phs[j] = placeholder(q.db.DriverName, idx)

@@ -90,6 +90,7 @@ func (g *Group) addRoute(method, pattern string, handler ghttp.HandlerFunc) *Rou
 		Pattern:     fullPattern,
 		Handler:     handler,
 		Middlewares: copyMiddlewares(g.middlewares),
+		segs:        segments(fullPattern),
 	}
 	g.router.routes = append(g.router.routes, route)
 	return route

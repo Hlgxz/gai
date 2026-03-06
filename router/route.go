@@ -12,6 +12,7 @@ type Route struct {
 	Handler     ghttp.HandlerFunc
 	Middlewares []ghttp.HandlerFunc
 	Name        string
+	segs        []string // cached segments from Pattern
 }
 
 // segments splits a URL pattern into its path parts, filtering out empties.

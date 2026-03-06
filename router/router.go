@@ -120,6 +120,7 @@ func (r *Router) addRoute(method, pattern string, handler ghttp.HandlerFunc, mw 
 		Pattern:     pattern,
 		Handler:     handler,
 		Middlewares: mw,
+		segs:        segments(pattern),
 	}
 	r.routes = append(r.routes, route)
 	return route
@@ -134,8 +135,7 @@ func (r *Router) match(method, path string) (*Route, map[string]string) {
 		if route.Method != method {
 			continue
 		}
-		routeSegs := segments(route.Pattern)
-		if params, ok := matchSegments(routeSegs, reqSegs); ok {
+		if params, ok := matchSegments(route.segs, reqSegs); ok {
 			return route, params
 		}
 	}

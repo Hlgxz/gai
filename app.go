@@ -56,7 +56,11 @@ func (app *Application) BasePath() string {
 	if app.basePath != "" {
 		return app.basePath
 	}
-	dir, _ := os.Getwd()
+	dir, err := os.Getwd()
+	if err != nil {
+		slog.Warn("failed to get working directory", "error", err)
+		return "."
+	}
 	return dir
 }
 
@@ -79,7 +83,9 @@ func (app *Application) Router() *router.Router {
 // LoadConfig reads YAML config files from the given directory and loads any
 // .env file from the application root.
 func (app *Application) LoadConfig(dir string) *Application {
-	_ = config.LoadEnvFile(app.BasePath() + "/.env")
+	if err := config.LoadEnvFile(app.BasePath() + "/.env"); err != nil {
+		slog.Warn("failed to load .env file", "error", err)
+	}
 	if err := app.config.Load(dir); err != nil {
 		slog.Warn("failed to load config", "dir", dir, "error", err)
 	}

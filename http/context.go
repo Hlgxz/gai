@@ -1,12 +1,14 @@
 package http
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -37,6 +39,10 @@ type Context struct {
 	mu       sync.RWMutex
 	written  bool
 	status   int
+
+	bodyOnce sync.Once
+	bodyBuf  []byte
+	bodyErr  error
 }
 
 // NewContext creates a fresh Context for the given request cycle.
@@ -146,14 +152,27 @@ func (c *Context) FormFile(key string) (*multipart.FileHeader, error) {
 // maxBodySize is the default limit for reading request bodies (10 MB).
 const maxBodySize = 10 << 20
 
-// Body reads the raw request body, limited to 10 MB by default.
-func (c *Context) Body() ([]byte, error) {
-	return io.ReadAll(io.LimitReader(c.Request.Body, maxBodySize))
+// readBody reads and caches the request body on first call; subsequent calls
+// return the cached result so Body() and BindJSON() can coexist.
+func (c *Context) readBody() ([]byte, error) {
+	c.bodyOnce.Do(func() {
+		c.bodyBuf, c.bodyErr = io.ReadAll(io.LimitReader(c.Request.Body, maxBodySize))
+	})
+	return c.bodyBuf, c.bodyErr
 }
 
-// BindJSON decodes the JSON request body into dst.
+// Body reads the raw request body, limited to 10 MB by default.
+func (c *Context) Body() ([]byte, error) {
+	return c.readBody()
+}
+
+// BindJSON decodes the JSON request body into dst, limited to maxBodySize.
 func (c *Context) BindJSON(dst any) error {
-	dec := json.NewDecoder(c.Request.Body)
+	body, err := c.readBody()
+	if err != nil {
+		return err
+	}
+	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.DisallowUnknownFields()
 	return dec.Decode(dst)
 }
@@ -167,15 +186,19 @@ func (c *Context) FullURL() string {
 	return fmt.Sprintf("%s://%s%s", scheme, c.Request.Host, c.Request.RequestURI)
 }
 
-// ClientIP extracts the client's IP address.
+// ClientIP extracts the client's IP address, stripping port if present.
 func (c *Context) ClientIP() string {
 	if forwarded := c.Request.Header.Get("X-Forwarded-For"); forwarded != "" {
-		return strings.SplitN(forwarded, ",", 2)[0]
+		return strings.TrimSpace(strings.SplitN(forwarded, ",", 2)[0])
 	}
 	if realIP := c.Request.Header.Get("X-Real-IP"); realIP != "" {
-		return realIP
+		return strings.TrimSpace(realIP)
 	}
-	return c.Request.RemoteAddr
+	ip, _, err := net.SplitHostPort(c.Request.RemoteAddr)
+	if err != nil {
+		return c.Request.RemoteAddr
+	}
+	return ip
 }
 
 // Header returns a request header value.
@@ -275,7 +298,9 @@ func (c *Context) HTML(code int, html string) {
 	c.SetHeader("Content-Type", "text/html; charset=utf-8")
 	c.Writer.WriteHeader(code)
 	c.written = true
-	c.Writer.Write([]byte(html))
+	if _, err := c.Writer.Write([]byte(html)); err != nil {
+		slog.Error("gai: failed to write HTML response", "error", err)
+	}
 }
 
 // Redirect sends a redirect response.

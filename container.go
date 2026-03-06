@@ -11,7 +11,7 @@ import (
 // singleton (Singleton) bindings, resolved lazily on first use.
 type Container struct {
 	mu         sync.RWMutex
-	bindings   map[string]binding
+	bindings   map[string]*binding
 	instances  map[string]any
 	aliases    map[reflect.Type]string
 }
@@ -19,11 +19,13 @@ type Container struct {
 type binding struct {
 	resolver  func(c *Container) any
 	singleton bool
+	once      sync.Once
+	instance  any
 }
 
 func newContainer() *Container {
 	return &Container{
-		bindings:  make(map[string]binding),
+		bindings:  make(map[string]*binding),
 		instances: make(map[string]any),
 		aliases:   make(map[reflect.Type]string),
 	}
@@ -33,14 +35,14 @@ func newContainer() *Container {
 func (c *Container) Bind(name string, resolver func(c *Container) any) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.bindings[name] = binding{resolver: resolver, singleton: false}
+	c.bindings[name] = &binding{resolver: resolver, singleton: false}
 }
 
 // Singleton registers a factory that is resolved once and cached forever.
 func (c *Container) Singleton(name string, resolver func(c *Container) any) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.bindings[name] = binding{resolver: resolver, singleton: true}
+	c.bindings[name] = &binding{resolver: resolver, singleton: true}
 }
 
 // Instance binds an already-constructed value as a singleton.
@@ -72,19 +74,13 @@ func (c *Container) Resolve(name string) (any, error) {
 	}
 
 	if b.singleton {
-		// Resolve outside the lock to avoid deadlock when a resolver calls
-		// back into the container.
-		instance := b.resolver(c)
-
+		b.once.Do(func() {
+			b.instance = b.resolver(c)
+		})
 		c.mu.Lock()
-		// Double-check: another goroutine may have resolved concurrently.
-		if existing, ok := c.instances[name]; ok {
-			c.mu.Unlock()
-			return existing, nil
-		}
-		c.instances[name] = instance
+		c.instances[name] = b.instance
 		c.mu.Unlock()
-		return instance, nil
+		return b.instance, nil
 	}
 
 	return b.resolver(c), nil

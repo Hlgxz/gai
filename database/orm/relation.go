@@ -1,6 +1,7 @@
 package orm
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"reflect"
@@ -16,7 +17,12 @@ import (
 //
 //	users, _ := Get[User](qb)
 //	orm.With(db, users, "Posts")
-func With[T any](db *DB, models []T, relation string) error {
+func With[T any](db *DB, models []T, relation string, ctxs ...context.Context) error {
+	ctx := context.Background()
+	if len(ctxs) > 0 {
+		ctx = ctxs[0]
+	}
+
 	if len(models) == 0 {
 		return nil
 	}
@@ -41,15 +47,15 @@ func With[T any](db *DB, models []T, relation string) error {
 
 	switch relType {
 	case "hasMany":
-		return loadHasMany(db, models, relation, field)
+		return loadHasMany(db, ctx, models, relation, field)
 	case "belongsTo":
-		return loadBelongsTo(db, models, relation, field)
+		return loadBelongsTo(db, ctx, models, relation, field)
 	}
 
 	return fmt.Errorf("gai/orm: unsupported relation type %q", relType)
 }
 
-func loadHasMany[T any](db *DB, models []T, relation string, field reflect.StructField) error {
+func loadHasMany[T any](db *DB, ctx context.Context, models []T, relation string, field reflect.StructField) error {
 	var zero T
 
 	// Collect parent IDs.
@@ -73,9 +79,9 @@ func loadHasMany[T any](db *DB, models []T, relation string, field reflect.Struc
 	}
 
 	query := fmt.Sprintf("SELECT * FROM %s WHERE %s IN (%s)",
-		childTable, fk, strings.Join(placeholders, ", "))
+		db.quote(childTable), db.quote(fk), strings.Join(placeholders, ", "))
 
-	rows, err := db.SQL.Query(query, ids...)
+	rows, err := db.SQL.QueryContext(ctx, query, ids...)
 	if err != nil {
 		return fmt.Errorf("gai/orm: hasMany query failed: %w", err)
 	}
@@ -111,7 +117,7 @@ func loadHasMany[T any](db *DB, models []T, relation string, field reflect.Struc
 	return nil
 }
 
-func loadBelongsTo[T any](db *DB, models []T, relation string, field reflect.StructField) error {
+func loadBelongsTo[T any](db *DB, ctx context.Context, models []T, relation string, field reflect.StructField) error {
 	relType := field.Type
 	if relType.Kind() == reflect.Ptr {
 		relType = relType.Elem()
@@ -141,10 +147,10 @@ func loadBelongsTo[T any](db *DB, models []T, relation string, field reflect.Str
 		placeholders[i] = placeholder(db.DriverName, i+1)
 	}
 
-	query := fmt.Sprintf("SELECT * FROM %s WHERE id IN (%s)",
-		relTable, strings.Join(placeholders, ", "))
+	query := fmt.Sprintf("SELECT * FROM %s WHERE %s IN (%s)",
+		db.quote(relTable), db.quote("id"), strings.Join(placeholders, ", "))
 
-	rows, err := db.SQL.Query(query, ids...)
+	rows, err := db.SQL.QueryContext(ctx, query, ids...)
 	if err != nil {
 		return fmt.Errorf("gai/orm: belongsTo query failed: %w", err)
 	}

@@ -59,10 +59,13 @@ func Plural(s string) string {
 		strings.HasSuffix(lower, "sh") || strings.HasSuffix(lower, "ch") {
 		return s + "es"
 	}
-	if strings.HasSuffix(lower, "y") && len(s) > 1 {
-		prev := rune(lower[len(lower)-2])
-		if prev != 'a' && prev != 'e' && prev != 'i' && prev != 'o' && prev != 'u' {
-			return s[:len(s)-1] + "ies"
+	if strings.HasSuffix(lower, "y") {
+		runes := []rune(lower)
+		if len(runes) > 1 {
+			prev := runes[len(runes)-2]
+			if prev != 'a' && prev != 'e' && prev != 'i' && prev != 'o' && prev != 'u' {
+				return string([]rune(s)[:len(runes)-1]) + "ies"
+			}
 		}
 	}
 	return s + "s"
