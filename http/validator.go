@@ -9,6 +9,12 @@ import (
 	"unicode/utf8"
 )
 
+var (
+	reAlpha        = regexp.MustCompile(`^[a-zA-Z]+$`)
+	reAlphanumeric = regexp.MustCompile(`^[a-zA-Z0-9]+$`)
+	rePhone        = regexp.MustCompile(`^1[3-9]\d{9}$`)
+)
+
 // ValidationErrors maps field names to their error messages.
 type ValidationErrors map[string][]string
 
@@ -96,19 +102,19 @@ func (v *Validator) Validate() ValidationErrors {
 				}
 			case "alpha":
 				if s, ok := toString(value); ok {
-					if !regexp.MustCompile(`^[a-zA-Z]+$`).MatchString(s) {
+					if !reAlpha.MatchString(s) {
 						v.addError(field, fmt.Sprintf("%s must contain only letters", field))
 					}
 				}
 			case "alphanumeric":
 				if s, ok := toString(value); ok {
-					if !regexp.MustCompile(`^[a-zA-Z0-9]+$`).MatchString(s) {
+					if !reAlphanumeric.MatchString(s) {
 						v.addError(field, fmt.Sprintf("%s must be alphanumeric", field))
 					}
 				}
 			case "phone":
 				if s, ok := toString(value); ok {
-					if !regexp.MustCompile(`^1[3-9]\d{9}$`).MatchString(s) {
+					if !rePhone.MatchString(s) {
 						v.addError(field, fmt.Sprintf("%s must be a valid phone number", field))
 					}
 				}

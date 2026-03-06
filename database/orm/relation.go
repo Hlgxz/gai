@@ -51,8 +51,6 @@ func With[T any](db *DB, models []T, relation string) error {
 
 func loadHasMany[T any](db *DB, models []T, relation string, field reflect.StructField) error {
 	var zero T
-	parentTable := TableName(zero)
-	_ = parentTable
 
 	// Collect parent IDs.
 	ids := make([]any, len(models))
@@ -197,14 +195,6 @@ func scanRowsDynamic(rows *sql.Rows, t reflect.Type) ([]reflect.Value, error) {
 		results = append(results, v)
 	}
 	return results, rows.Err()
-}
-
-func fieldValueReflect(v reflect.Value, name string) any {
-	fv := v.FieldByName(name)
-	if fv.IsValid() {
-		return fv.Interface()
-	}
-	return nil
 }
 
 func parseRelationTag(tag string) (string, string) {

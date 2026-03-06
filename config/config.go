@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 )
@@ -36,7 +37,7 @@ func (m *Manager) Load(dir string) error {
 			continue
 		}
 		key := strings.TrimSuffix(strings.TrimSuffix(name, ".yaml"), ".yml")
-		data, err := loadYAMLFile(dir + "/" + name)
+		data, err := loadYAMLFile(filepath.Join(dir, name))
 		if err != nil {
 			return fmt.Errorf("gai/config: failed to load %s: %w", name, err)
 		}

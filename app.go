@@ -20,19 +20,21 @@ import (
 type Application struct {
 	*Container
 
-	config    *config.Manager
-	router    *router.Router
-	providers []ServiceProvider
-	booted    bool
-	basePath  string
+	config          *config.Manager
+	router          *router.Router
+	providers       []ServiceProvider
+	booted          bool
+	basePath        string
+	shutdownTimeout time.Duration
 }
 
 // New creates a new Gai application instance.
 func New() *Application {
 	app := &Application{
-		Container: newContainer(),
-		config:    config.New(),
-		router:    router.New(),
+		Container:       newContainer(),
+		config:          config.New(),
+		router:          router.New(),
+		shutdownTimeout: 10 * time.Second,
 	}
 
 	// Self-register the app so providers can resolve it.
@@ -56,6 +58,12 @@ func (app *Application) BasePath() string {
 	}
 	dir, _ := os.Getwd()
 	return dir
+}
+
+// SetShutdownTimeout configures the graceful shutdown deadline.
+func (app *Application) SetShutdownTimeout(d time.Duration) *Application {
+	app.shutdownTimeout = d
+	return app
 }
 
 // Config returns the configuration manager.
@@ -142,7 +150,7 @@ func (app *Application) Serve(addr string) error {
 		return fmt.Errorf("gai: server error: %w", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), app.shutdownTimeout)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {

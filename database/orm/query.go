@@ -6,12 +6,22 @@ import (
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/Hlgxz/gai/support"
 )
 
 // DB wraps *sql.DB with driver metadata.
 type DB struct {
 	SQL        *sql.DB
 	DriverName string
+	QuoteIdent func(name string) string
+}
+
+func (db *DB) quote(name string) string {
+	if db.QuoteIdent != nil {
+		return db.QuoteIdent(name)
+	}
+	return name
 }
 
 // Pagination holds a paginated result set.
@@ -45,6 +55,7 @@ type whereClause struct {
 	value    any
 	boolean  string // "AND" or "OR"
 	raw      string
+	rawArgs  []any
 }
 
 type orderClause struct {
@@ -122,9 +133,9 @@ func (q *QueryBuilder) WhereIn(column string, values ...any) *QueryBuilder {
 	return q
 }
 
-// WhereRaw adds a raw WHERE clause.
-func (q *QueryBuilder) WhereRaw(raw string) *QueryBuilder {
-	q.wheres = append(q.wheres, whereClause{raw: raw, boolean: "AND"})
+// WhereRaw adds a raw WHERE clause with optional parameterized args.
+func (q *QueryBuilder) WhereRaw(raw string, args ...any) *QueryBuilder {
+	q.wheres = append(q.wheres, whereClause{raw: raw, boolean: "AND", rawArgs: args})
 	return q
 }
 
@@ -203,10 +214,11 @@ func Get[T any](q *QueryBuilder) ([]T, error) {
 	return scanRows[T](rows)
 }
 
-// First returns the first matching row.
+// First returns the first matching row without mutating the original query.
 func First[T any](q *QueryBuilder) (*T, error) {
-	q.limitVal = 1
-	items, err := Get[T](q)
+	fq := q.clone()
+	fq.limitVal = 1
+	items, err := Get[T](fq)
 	if err != nil {
 		return nil, err
 	}
@@ -292,14 +304,14 @@ func Create[T any](db *DB, model *T) (*T, error) {
 		if f.Column == "created_at" || f.Column == "updated_at" {
 			val = now
 		}
-		cols = append(cols, f.Column)
+		cols = append(cols, db.quote(f.Column))
 		placeholders = append(placeholders, placeholder(db.DriverName, idx))
 		args = append(args, val)
 		idx++
 	}
 
 	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
-		table,
+		db.quote(table),
 		strings.Join(cols, ", "),
 		strings.Join(placeholders, ", "),
 	)
@@ -350,15 +362,16 @@ func Update[T any](db *DB, model *T) error {
 		if f.Column == "updated_at" {
 			val = now
 		}
-		sets = append(sets, fmt.Sprintf("%s = %s", f.Column, placeholder(db.DriverName, idx)))
+		sets = append(sets, fmt.Sprintf("%s = %s", db.quote(f.Column), placeholder(db.DriverName, idx)))
 		args = append(args, val)
 		idx++
 	}
 
 	args = append(args, idVal)
-	query := fmt.Sprintf("UPDATE %s SET %s WHERE id = %s",
-		table,
+	query := fmt.Sprintf("UPDATE %s SET %s WHERE %s = %s",
+		db.quote(table),
 		strings.Join(sets, ", "),
+		db.quote("id"),
 		placeholder(db.DriverName, idx),
 	)
 
@@ -389,14 +402,15 @@ func Delete[T any](db *DB, model *T) error {
 
 	if hasSoftDelete {
 		now := time.Now()
-		query := fmt.Sprintf("UPDATE %s SET deleted_at = %s WHERE id = %s",
-			table, placeholder(db.DriverName, 1), placeholder(db.DriverName, 2))
+		query := fmt.Sprintf("UPDATE %s SET %s = %s WHERE %s = %s",
+			db.quote(table), db.quote("deleted_at"), placeholder(db.DriverName, 1),
+			db.quote("id"), placeholder(db.DriverName, 2))
 		_, err := db.SQL.Exec(query, now, idVal)
 		return err
 	}
 
-	query := fmt.Sprintf("DELETE FROM %s WHERE id = %s",
-		table, placeholder(db.DriverName, 1))
+	query := fmt.Sprintf("DELETE FROM %s WHERE %s = %s",
+		db.quote(table), db.quote("id"), placeholder(db.DriverName, 1))
 	_, err := db.SQL.Exec(query, idVal)
 	return err
 }
@@ -415,7 +429,7 @@ func (q *QueryBuilder) buildSelect() (string, []any) {
 	buf.WriteString("SELECT ")
 	buf.WriteString(sel)
 	buf.WriteString(" FROM ")
-	buf.WriteString(q.table)
+	buf.WriteString(q.db.quote(q.table))
 
 	// Inject soft-delete filter.
 	effectiveWheres := q.wheres
@@ -431,6 +445,7 @@ func (q *QueryBuilder) buildSelect() (string, []any) {
 			}
 			if w.raw != "" {
 				buf.WriteString(w.raw)
+				args = append(args, w.rawArgs...)
 				continue
 			}
 			if w.operator == "IN" {
@@ -545,7 +560,7 @@ func buildFieldMap(t reflect.Type, v reflect.Value) map[string]any {
 
 func parseColumn(tag, fieldName string) string {
 	if tag == "" {
-		return strings.ToLower(fieldName)
+		return support.Snake(fieldName)
 	}
 	for _, part := range strings.Split(tag, ";") {
 		kv := strings.SplitN(strings.TrimSpace(part), ":", 2)
@@ -553,7 +568,7 @@ func parseColumn(tag, fieldName string) string {
 			return kv[1]
 		}
 	}
-	return strings.ToLower(fieldName)
+	return support.Snake(fieldName)
 }
 
 func fieldValue(v reflect.Value, name string) any {

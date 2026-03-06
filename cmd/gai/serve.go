@@ -113,6 +113,11 @@ func waitForChanges(dir string) bool {
 				return true
 			}
 		}
+		for path := range modTimes {
+			if _, ok := newTimes[path]; !ok {
+				return true
+			}
+		}
 	}
 }
 

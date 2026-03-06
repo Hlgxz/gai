@@ -74,9 +74,28 @@ func makeMigrationCmd() *cobra.Command {
 			name := support.Snake(args[0])
 			ts := time.Now().Format("20060102150405")
 			filename := ts + "_" + name + ".go"
+
+			ensureMigrationRegistry("database/migrations")
+
 			return writeTemplate("database/migrations", filename, migrationStub(ts+"_"+name))
 		},
 	}
+}
+
+func ensureMigrationRegistry(dir string) {
+	path := filepath.Join(dir, "registry.go")
+	if _, err := os.Stat(path); err == nil {
+		return
+	}
+	os.MkdirAll(dir, 0o755)
+	content := `package migrations
+
+import "github.com/Hlgxz/gai/database/migration"
+
+// Migrations collects all migrations registered via init() functions.
+var Migrations []migration.Migration
+`
+	os.WriteFile(path, []byte(content), 0o644)
 }
 
 func writeTemplate(dir, filename, content string) error {
@@ -190,7 +209,7 @@ import (
 )
 
 func init() {
-	Register(migration.Migration{
+	Migrations = append(Migrations, migration.Migration{
 		Name: "%s",
 		Up: func(drv driver.Driver) string {
 			// Write your UP migration SQL here

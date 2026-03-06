@@ -72,13 +72,16 @@ func (c *Container) Resolve(name string) (any, error) {
 	}
 
 	if b.singleton {
-		c.mu.Lock()
-		// Double-check: another goroutine may have resolved while we waited.
-		if inst, ok := c.instances[name]; ok {
-			c.mu.Unlock()
-			return inst, nil
-		}
+		// Resolve outside the lock to avoid deadlock when a resolver calls
+		// back into the container.
 		instance := b.resolver(c)
+
+		c.mu.Lock()
+		// Double-check: another goroutine may have resolved concurrently.
+		if existing, ok := c.instances[name]; ok {
+			c.mu.Unlock()
+			return existing, nil
+		}
 		c.instances[name] = instance
 		c.mu.Unlock()
 		return instance, nil

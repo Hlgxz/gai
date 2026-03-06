@@ -43,6 +43,10 @@ func (g *Generator) GenerateAll(s *schema.Schema) error {
 			return fmt.Errorf("gai/generator: mkdir %s failed: %w", dir, err)
 		}
 
+		if f.name == "migration" {
+			ensureMigrationRegistry(dir)
+		}
+
 		var filename string
 		switch f.name {
 		case "model":
@@ -64,6 +68,21 @@ func (g *Generator) GenerateAll(s *schema.Schema) error {
 	}
 
 	return nil
+}
+
+func ensureMigrationRegistry(dir string) {
+	path := filepath.Join(dir, "registry.go")
+	if _, err := os.Stat(path); err == nil {
+		return
+	}
+	content := `package migrations
+
+import "github.com/Hlgxz/gai/database/migration"
+
+// Migrations collects all migrations registered via init() functions.
+var Migrations []migration.Migration
+`
+	os.WriteFile(path, []byte(content), 0o644)
 }
 
 // GenerateFromDir processes all schema files in a directory.

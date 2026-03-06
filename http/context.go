@@ -143,9 +143,12 @@ func (c *Context) FormFile(key string) (*multipart.FileHeader, error) {
 	return fh, err
 }
 
-// Body reads the raw request body.
+// maxBodySize is the default limit for reading request bodies (10 MB).
+const maxBodySize = 10 << 20
+
+// Body reads the raw request body, limited to 10 MB by default.
 func (c *Context) Body() ([]byte, error) {
-	return io.ReadAll(c.Request.Body)
+	return io.ReadAll(io.LimitReader(c.Request.Body, maxBodySize))
 }
 
 // BindJSON decodes the JSON request body into dst.

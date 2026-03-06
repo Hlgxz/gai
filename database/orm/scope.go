@@ -4,7 +4,14 @@ package orm
 // Usage: Query[User](db).Scope(ActiveUsers).Get()
 type Scope func(q *QueryBuilder) *QueryBuilder
 
-// ActiveScope is a built-in scope that filters soft-deleted records.
+// ActiveScope filters soft-deleted records. It is a no-op when the
+// QueryBuilder already has automatic soft-delete filtering enabled
+// (which is the default for models with a DeletedAt field).
+// Use this scope only on builders created via Table() or after
+// calling WithTrashed().
 func ActiveScope(q *QueryBuilder) *QueryBuilder {
+	if q.softDelete {
+		return q
+	}
 	return q.WhereNull("deleted_at")
 }

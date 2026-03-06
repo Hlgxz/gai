@@ -18,7 +18,7 @@ import (
 )
 
 func init() {
-	Register(migration.Migration{
+	Migrations = append(Migrations, migration.Migration{
 		Name: "{{ .Name }}",
 		Up: func(drv driver.Driver) string {
 			b := migration.NewBlueprint("{{ .Table }}", drv)

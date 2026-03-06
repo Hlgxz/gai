@@ -10,8 +10,8 @@ import (
 const controllerTemplate = `package controllers
 
 import (
+	"fmt"
 	"net/http"
-	"strconv"
 
 	ghttp "github.com/Hlgxz/gai/http"
 	"github.com/Hlgxz/gai/database/orm"
@@ -94,7 +94,12 @@ func (ctrl *{{ .Model }}Controller) Store(c *ghttp.Context) {
 	item := &models.{{ .Model }}{}
 	{{- range .Fields }}
 	if v, ok := input["{{ .Name }}"]; ok {
-		item.{{ .GoName }} = v.({{ .GoType }})
+		if typed, ok := v.({{ .GoType }}); ok {
+			item.{{ .GoName }} = typed
+		} else {
+			c.Error(http.StatusBadRequest, fmt.Sprintf("invalid type for field {{ .Name }}: expected {{ .GoType }}, got %T", v))
+			return
+		}
 	}
 	{{- end }}
 
@@ -135,7 +140,12 @@ func (ctrl *{{ .Model }}Controller) Update(c *ghttp.Context) {
 
 	{{- range .Fields }}
 	if v, ok := input["{{ .Name }}"]; ok {
-		item.{{ .GoName }} = v.({{ .GoType }})
+		if typed, ok := v.({{ .GoType }}); ok {
+			item.{{ .GoName }} = typed
+		} else {
+			c.Error(http.StatusBadRequest, fmt.Sprintf("invalid type for field {{ .Name }}: expected {{ .GoType }}, got %T", v))
+			return
+		}
 	}
 	{{- end }}
 
