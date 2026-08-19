@@ -13,13 +13,14 @@ Gai 是一个 AI 原生的 Go Web 全栈框架，融合 Go 语言的简洁高效
 - **优雅的 API** — Go 惯用风格为主，关键处借鉴 Laravel 的链式调用和表达式路由
 - **服务容器** — 类 Laravel 的依赖注入容器，支持 Singleton、Bind、ServiceProvider
 - **多数据库 ORM** — 事务、Join、预加载、软删、批量写入、聚合；MySQL / PostgreSQL / SQLite
-- **数据库迁移** — 版本化迁移，支持 Up/Down/Rollback/Fresh/Reset + Seeder
+- **数据库迁移** — 版本化 Up/Down/Rollback/Fresh/Reset、Seeder，以及 ALTER / 外键 / 复合索引
 - **认证与权限** — 多 Guard、JWT access/refresh 作废、RBAC
 - **缓存 / 队列 / 会话 / 存储 / 邮件 / 调度 / 事件**
-- **小程序 SDK** — 微信/支付宝小程序登录、支付、消息推送
+- **小程序 SDK** — 微信登录/支付/消息；支付宝登录
 - **请求校验** — Laravel 风格管道规则，支持 unique/exists/confirmed 与 struct tag
-- **内置中间件** — CORS、Logger、Recovery、RateLimit、RequestID、Gzip、Timeout、CSRF
-- **CLI 工具** — `gai` 命令行工具，项目脚手架、代码生成一键完成
+- **内置中间件** — 默认 Recovery / RequestID / Logger / CORS；另提供 RateLimit、Gzip、Timeout、CSRF
+- **可观测性** — JSON 日志通道、`/health/live` 与 `/health/ready`，可选 pprof 与 Prometheus 风格 `/metrics`
+- **CLI 工具** — `gai` 命令行工具，项目脚手架、代码生成、迁移与 Seeder
 
 
 ## AI 原生开发支持
@@ -103,7 +104,7 @@ r.Get("/", homeHandler)
 r.Post("/login", loginHandler)
 
 r.Group("/api/v1", func(g *router.Group) {
-    g.Use(middleware.Auth("jwt"))
+    g.Use(authManager.Middleware("jwt"))
     g.Get("/users", userCtrl.Index)
     g.Post("/users", userCtrl.Store)
     g.Get("/users/:id", userCtrl.Show)
@@ -179,6 +180,7 @@ gai generate --schema schemas/user.yaml
 - `app/controllers/user_controller.go`
 - `database/migrations/xxx_create_users_table.go`
 - `routes/user_routes.go`
+- `routes/generated.go`（自动接入 `routes.Register`）
 
 ### 认证
 
@@ -256,6 +258,7 @@ if errs := validator.Validate(); errs != nil {
 | `gai migrate status` | 查看迁移状态 |
 | `gai migrate fresh` | 回滚全部迁移并重新执行 |
 | `gai migrate reset` | 回滚全部迁移 |
+| `gai seed` | 执行数据库 Seeder |
 
 ## 技术栈
 

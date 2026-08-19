@@ -79,36 +79,3 @@ func generateCmd() *cobra.Command {
 
 	return cmd
 }
-
-// detectModule reads the go.mod file to find the module path.
-func detectModule() string {
-	data, err := os.ReadFile("go.mod")
-	if err != nil {
-		return "myapp"
-	}
-	for _, line := range splitLines(string(data)) {
-		if len(line) > 7 && line[:7] == "module " {
-			return line[7:]
-		}
-	}
-	return "myapp"
-}
-
-func splitLines(s string) []string {
-	var lines []string
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\n' {
-			line := s[start:i]
-			if len(line) > 0 && line[len(line)-1] == '\r' {
-				line = line[:len(line)-1]
-			}
-			lines = append(lines, line)
-			start = i + 1
-		}
-	}
-	if start < len(s) {
-		lines = append(lines, s[start:])
-	}
-	return lines
-}

@@ -13,13 +13,14 @@ Gai is an AI-native full-stack Go web framework that blends Go's simplicity with
 - **Elegant API** — Go-idiomatic core with Laravel-inspired chain calls and expressive routing
 - **Service Container** — Laravel-style DI container with Singleton, Bind, and ServiceProvider
 - **Multi-DB ORM** — Transactions, joins, eager load, soft deletes, bulk insert, aggregates; MySQL / PostgreSQL / SQLite
-- **Database Migrations** — Versioned migrations with Up/Down/Rollback/Fresh/Reset and seeders
+- **Database Migrations** — Versioned Up/Down/Rollback/Fresh/Reset, seeders, ALTER / foreign keys / composite indexes
 - **Auth & RBAC** — Multi-guard JWT with refresh/revoke plus role-based permissions
 - **Cache / Queue / Session / Storage / Mail / Schedule / Events**
-- **Mini-Program SDK** — WeChat / Alipay login, payment, and push notifications
+- **Mini-Program SDK** — WeChat login / pay / subscribe messages; Alipay login
 - **Request Validation** — Laravel-style pipe rules including unique/exists/confirmed and struct tags
-- **Built-in Middleware** — CORS, Logger, Recovery, RateLimit, RequestID, Gzip, Timeout, CSRF
-- **CLI Toolkit** — `gai` command-line tool for scaffolding and code generation
+- **Built-in Middleware** — Default stack: Recovery, RequestID, Logger, CORS. Also available: RateLimit, Gzip, Timeout, CSRF
+- **Observability** — JSON log channels, `/health/live` + `/health/ready`, opt-in pprof and Prometheus-style `/metrics`
+- **CLI Toolkit** — scaffolding, schema generation, `gai migrate*` and `gai seed`
 
 ## AI-Native Development
 
@@ -102,7 +103,7 @@ r.Get("/", homeHandler)
 r.Post("/login", loginHandler)
 
 r.Group("/api/v1", func(g *router.Group) {
-    g.Use(middleware.Auth("jwt"))
+    g.Use(authManager.Middleware("jwt"))
     g.Get("/users", userCtrl.Index)
     g.Post("/users", userCtrl.Store)
     g.Get("/users/:id", userCtrl.Show)
@@ -178,6 +179,7 @@ Auto-generated files:
 - `app/controllers/user_controller.go`
 - `database/migrations/xxx_create_users_table.go`
 - `routes/user_routes.go`
+- `routes/generated.go` (wired into `routes.Register` automatically)
 
 ### Authentication
 
@@ -255,6 +257,7 @@ if errs := validator.Validate(); errs != nil {
 | `gai migrate status` | Show migration status |
 | `gai migrate fresh` | Rollback all migrations and re-run |
 | `gai migrate reset` | Rollback all migrations |
+| `gai seed` | Run database seeders |
 
 ## Tech Stack
 

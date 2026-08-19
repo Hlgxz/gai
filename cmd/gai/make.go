@@ -111,6 +111,9 @@ func makeSeederCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := support.Camel(args[0])
+			if err := ensureSeederRegistry("database/seeders"); err != nil {
+				return fmt.Errorf("failed to create seeder registry: %w", err)
+			}
 			return writeTemplate("database/seeders", support.Snake(name)+".go", seederStub(name))
 		},
 	}
@@ -135,12 +138,16 @@ import (
 	"github.com/Hlgxz/gai/database/orm"
 )
 
+func init() {
+	Seeders = append(Seeders, %s)
+}
+
 // %s seeds initial data.
 func %s(db *orm.DB) error {
 	// orm.Create[Model](db, &Model{})
 	return nil
 }
-`, name, name)
+`, name, name, name)
 }
 
 func jobStub(name string) string {

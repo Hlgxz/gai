@@ -23,6 +23,7 @@ func main() {
 		makeCmd(),
 		generateCmd(),
 		migrateCmd(),
+		seedCmd(),
 	)
 
 	if err := root.Execute(); err != nil {

@@ -69,6 +69,10 @@ func (g *Generator) GenerateAll(s *schema.Schema) error {
 		fmt.Printf("  created: %s\n", outPath)
 	}
 
+	if err := g.registerRoutes(s); err != nil {
+		return fmt.Errorf("gai/generator: route registration failed: %w", err)
+	}
+
 	return nil
 }
 

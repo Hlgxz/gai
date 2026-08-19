@@ -41,6 +41,7 @@ func createProject(name, module string, port int) error {
 		"app/middleware",
 		"config",
 		"database/migrations",
+		"database/seeders",
 		"routes",
 		"schemas",
 		"storage/logs",
@@ -65,7 +66,9 @@ func createProject(name, module string, port int) error {
 		"config/app.yaml":                 appYamlContent(name, port),
 		"schemas/.gitkeep":                "",
 		"database/migrations/.gitkeep":    "",
+		"database/seeders/.gitkeep":       "",
 		"routes/routes.go":                routesGoContent(module),
+		"routes/generated.go":             generatedRoutesContent(),
 		".gitignore":                      gitignoreContent(),
 		".cursor/rules/gai.mdc":           cursorRulesContent(module),
 		"CLAUDE.md":                       claudeContent(module),
@@ -101,10 +104,10 @@ func createProject(name, module string, port int) error {
 func goModContent(module string) string {
 	return fmt.Sprintf(`module %s
 
-go 1.22
+go 1.24
 
-require github.com/Hlgxz/gai v0.1.0
-`, module)
+require github.com/Hlgxz/gai v%s
+`, module, version)
 }
 
 func mainGoContent(module string, port int) string {
@@ -134,7 +137,14 @@ func main() {
 	guards.RegisterGuard(auth.NewJWTGuard(secret, ttl))
 	app.Instance("auth", guards)
 
+	if app.Config().GetBool("app.debug", false) {
+		app.EnablePprof()
+		app.EnableMetrics()
+	}
+
 	app.Router().Get("/health", app.Health())
+	app.Router().Get("/health/live", app.Liveness())
+	app.Router().Get("/health/ready", app.Readiness())
 	routes.Register(app)
 
 	addr := fmt.Sprintf(":%%d", %d)
@@ -165,6 +175,11 @@ port: %d
 env: ${APP_ENV:development}
 debug: ${APP_DEBUG:true}
 
+log:
+  level: ${LOG_LEVEL:info}
+  output: ${LOG_OUTPUT:stdout}
+  path: ${LOG_PATH:storage/logs/app.log}
+
 database:
   driver: ${DB_DRIVER:sqlite}
   dsn: ${DB_DATABASE:storage/database.db}
@@ -183,7 +198,7 @@ auth:
 
 func routesGoContent(module string) string {
 	_ = module
-	return `package routes
+	return fmt.Sprintf(`package routes
 
 import (
 	"github.com/Hlgxz/gai"
@@ -197,10 +212,26 @@ func Register(app *gai.Application) {
 	r.Get("/", func(c *ghttp.Context) {
 		c.Success(map[string]string{
 			"framework": "Gai",
-			"version":   "0.2.0",
+			"version":   "%s",
 			"message":   "Welcome to Gai! Define once, generate everything.",
 		})
 	})
+
+	registerGenerated(app, r)
+}
+`, version)
+}
+
+func generatedRoutesContent() string {
+	return `package routes
+
+import (
+	"github.com/Hlgxz/gai"
+	"github.com/Hlgxz/gai/router"
+)
+
+// registerGenerated is maintained by gai generate. Do not edit by hand.
+func registerGenerated(app *gai.Application, r *router.Router) {
 }
 `
 }

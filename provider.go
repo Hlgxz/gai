@@ -1,5 +1,7 @@
 package gai
 
+import "context"
+
 // ServiceProvider defines the contract for registering services into the
 // application container, mirroring Laravel's service provider pattern.
 type ServiceProvider interface {
@@ -9,4 +11,10 @@ type ServiceProvider interface {
 	// Boot is called after all providers have been registered, allowing
 	// providers to do work that depends on other bindings.
 	Boot(app *Application)
+}
+
+// Shutdowner is an optional interface providers may implement to release
+// resources during graceful shutdown.
+type Shutdowner interface {
+	Shutdown(ctx context.Context) error
 }

@@ -14,6 +14,8 @@ import (
 	"github.com/Hlgxz/gai/database"
 	"github.com/Hlgxz/gai/database/orm"
 	ghttp "github.com/Hlgxz/gai/http"
+	"github.com/Hlgxz/gai/logging"
+	"github.com/Hlgxz/gai/metrics"
 	"github.com/Hlgxz/gai/middleware"
 	"github.com/Hlgxz/gai/router"
 )
@@ -32,6 +34,9 @@ type Application struct {
 	readTimeout     time.Duration
 	writeTimeout    time.Duration
 	idleTimeout     time.Duration
+	shutdownHooks   []func(context.Context) error
+	pprofEnabled    bool
+	metricsEnabled  bool
 }
 
 // New creates a new Gai application instance.
@@ -129,6 +134,9 @@ func (app *Application) OpenDB() (*orm.DB, error) {
 		return nil, err
 	}
 	app.Instance("db", db)
+	app.OnShutdown(func(_ context.Context) error {
+		return db.Close()
+	})
 	return db, nil
 }
 
@@ -156,8 +164,15 @@ func (app *Application) Boot() *Application {
 	return app
 }
 
-// UseDefaults wires up the standard middleware stack.
+// UseDefaults wires up the standard middleware stack:
+// Recovery, RequestID, Logger, CORS. Gzip, CSRF, RateLimit, and Timeout
+// are available in github.com/Hlgxz/gai/middleware and must be added explicitly.
 func (app *Application) UseDefaults() *Application {
+	logging.Setup(logging.Config{
+		Level:  app.config.GetString("app.log.level", "info"),
+		Output: app.config.GetString("app.log.output", "stdout"),
+		Path:   app.config.GetString("app.log.path", "storage/logs/app.log"),
+	})
 	app.router.Use(
 		middleware.Recovery(),
 		middleware.RequestID(),
@@ -167,8 +182,63 @@ func (app *Application) UseDefaults() *Application {
 	return app
 }
 
-// Health returns a readiness handler that pings the bound database if present.
+// EnablePprof mounts /debug/pprof on the router.
+func (app *Application) EnablePprof() *Application {
+	if !app.pprofEnabled {
+		metrics.MountPprof(app.router)
+		app.pprofEnabled = true
+	}
+	return app
+}
+
+// EnableMetrics mounts request metrics middleware and GET /metrics.
+func (app *Application) EnableMetrics() *Application {
+	if !app.metricsEnabled {
+		app.router.Use(metrics.Middleware())
+		app.router.Get("/metrics", metrics.Handler())
+		app.metricsEnabled = true
+	}
+	return app
+}
+
+// OnShutdown registers a hook invoked after the HTTP server stops.
+func (app *Application) OnShutdown(fn func(context.Context) error) *Application {
+	app.shutdownHooks = append(app.shutdownHooks, fn)
+	return app
+}
+
+// Shutdown runs provider Shutdowner implementations, then OnShutdown hooks.
+func (app *Application) Shutdown(ctx context.Context) error {
+	var first error
+	for i := len(app.providers) - 1; i >= 0; i-- {
+		if s, ok := app.providers[i].(Shutdowner); ok {
+			if err := s.Shutdown(ctx); err != nil && first == nil {
+				first = err
+			}
+		}
+	}
+	for i := len(app.shutdownHooks) - 1; i >= 0; i-- {
+		if err := app.shutdownHooks[i](ctx); err != nil && first == nil {
+			first = err
+		}
+	}
+	return first
+}
+
+// Health returns a combined liveness+readiness handler (DB ping when bound).
 func (app *Application) Health() ghttp.HandlerFunc {
+	return app.Readiness()
+}
+
+// Liveness returns a handler that only reports process liveness.
+func (app *Application) Liveness() ghttp.HandlerFunc {
+	return func(c *ghttp.Context) {
+		c.OK(map[string]any{"status": "ok"})
+	}
+}
+
+// Readiness pings bound dependencies (currently the database, if present).
+func (app *Application) Readiness() ghttp.HandlerFunc {
 	return func(c *ghttp.Context) {
 		status := map[string]any{"status": "ok"}
 		if app.Has("db") {
@@ -238,6 +308,9 @@ func (app *Application) serve(addr, certFile, keyFile string) error {
 
 	if err := srv.Shutdown(ctx); err != nil {
 		return fmt.Errorf("gai: shutdown error: %w", err)
+	}
+	if err := app.Shutdown(ctx); err != nil {
+		slog.Error("gai: resource shutdown", "error", err)
 	}
 
 	slog.Info("server stopped gracefully")

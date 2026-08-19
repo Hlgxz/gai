@@ -81,6 +81,9 @@ func (ctrl *{{ .Model }}Controller) Store(c *ghttp.Context) {
 		"{{ .Field }}": "{{ .Rules }}",
 		{{- end }}
 	})
+	{{- if .NeedsDB }}
+	validator.WithDB(ctrl.DB)
+	{{- end }}
 	if errs := validator.Validate(); errs != nil {
 		c.JSON(http.StatusUnprocessableEntity, map[string]any{
 			"code":    422,
@@ -199,6 +202,7 @@ type controllerData struct {
 	Actions         []string
 	Fields          []controllerField
 	ValidationRules []validationRule
+	NeedsDB         bool
 }
 
 type controllerField struct {
@@ -225,6 +229,12 @@ func (d controllerData) HasAction(name string) bool {
 func (g *Generator) GenerateController(s *schema.Schema) (string, error) {
 	var fields []controllerField
 	var rules []validationRule
+	needsDB := false
+
+	table := s.Table
+	if table == "" {
+		table = strings.ToLower(pluralize(s.Model))
+	}
 
 	for _, f := range s.Fields {
 		fields = append(fields, controllerField{
@@ -232,10 +242,22 @@ func (g *Generator) GenerateController(s *schema.Schema) (string, error) {
 			GoName: toCamel(f.Name),
 			GoType: f.GoType(),
 		})
-		if f.Rules != "" {
+		ruleStr := f.Rules
+		if f.Unique && !strings.Contains(ruleStr, "unique") {
+			extra := "unique:" + table + "," + f.Name
+			if ruleStr == "" {
+				ruleStr = extra
+			} else {
+				ruleStr += "|" + extra
+			}
+		}
+		if ruleStr != "" {
+			if strings.Contains(ruleStr, "unique") || strings.Contains(ruleStr, "exists") {
+				needsDB = true
+			}
 			rules = append(rules, validationRule{
 				Field: f.Name,
-				Rules: f.Rules,
+				Rules: ruleStr,
 			})
 		}
 	}
@@ -253,6 +275,7 @@ func (g *Generator) GenerateController(s *schema.Schema) (string, error) {
 		Actions:         actions,
 		Fields:          fields,
 		ValidationRules: rules,
+		NeedsDB:         needsDB,
 	}
 
 	funcMap := template.FuncMap{
