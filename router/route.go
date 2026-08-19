@@ -13,6 +13,16 @@ type Route struct {
 	Middlewares []ghttp.HandlerFunc
 	Name        string
 	segs        []string // cached segments from Pattern
+	router      *Router
+}
+
+// As names this route so it can be reverse-resolved via Router.URL.
+func (rt *Route) As(name string) *Route {
+	rt.Name = name
+	if rt.router != nil {
+		rt.router.named[name] = rt
+	}
+	return rt
 }
 
 // segments splits a URL pattern into its path parts.

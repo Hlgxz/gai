@@ -23,6 +23,8 @@ func makeCmd() *cobra.Command {
 		makeControllerCmd(),
 		makeMiddlewareCmd(),
 		makeMigrationCmd(),
+		makeSeederCmd(),
+		makeJobCmd(),
 	)
 
 	return cmd
@@ -100,6 +102,61 @@ import "github.com/Hlgxz/gai/database/migration"
 var Migrations []migration.Migration
 `
 	return os.WriteFile(path, []byte(content), 0o644)
+}
+
+func makeSeederCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "seeder [Name]",
+		Short: "Generate a database seeder",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := support.Camel(args[0])
+			return writeTemplate("database/seeders", support.Snake(name)+".go", seederStub(name))
+		},
+	}
+}
+
+func makeJobCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "job [Name]",
+		Short: "Generate a queue job handler stub",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := support.Camel(args[0])
+			return writeTemplate("app/jobs", support.Snake(name)+".go", jobStub(name))
+		},
+	}
+}
+
+func seederStub(name string) string {
+	return fmt.Sprintf(`package seeders
+
+import (
+	"github.com/Hlgxz/gai/database/orm"
+)
+
+// %s seeds initial data.
+func %s(db *orm.DB) error {
+	// orm.Create[Model](db, &Model{})
+	return nil
+}
+`, name, name)
+}
+
+func jobStub(name string) string {
+	return fmt.Sprintf(`package jobs
+
+import (
+	"context"
+)
+
+const %sJob = "%s"
+
+// Handle%s processes a queued %s job.
+func Handle%s(ctx context.Context, payload []byte) error {
+	return nil
+}
+`, name, support.Snake(name), name, name, name)
 }
 
 func writeTemplate(dir, filename, content string) error {

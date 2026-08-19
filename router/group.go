@@ -53,6 +53,11 @@ func (g *Group) Delete(pattern string, handler ghttp.HandlerFunc) *Route {
 	return g.addRoute("DELETE", pattern, handler)
 }
 
+// Head registers a HEAD route.
+func (g *Group) Head(pattern string, handler ghttp.HandlerFunc) *Route {
+	return g.addRoute("HEAD", pattern, handler)
+}
+
 // Options registers an OPTIONS route.
 func (g *Group) Options(pattern string, handler ghttp.HandlerFunc) *Route {
 	return g.addRoute("OPTIONS", pattern, handler)
@@ -72,6 +77,11 @@ type ResourceController interface {
 	Store(c *ghttp.Context)
 	Update(c *ghttp.Context)
 	Destroy(c *ghttp.Context)
+}
+
+// Static serves files from dir under this group's prefix.
+func (g *Group) Static(prefix, dir string) {
+	g.router.Static(g.prefix+prefix, dir)
 }
 
 // Resource registers a full RESTful resource (index, show, store, update, destroy).

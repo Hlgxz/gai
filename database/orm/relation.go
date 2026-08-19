@@ -33,32 +33,41 @@ func With[T any](db *DB, models []T, relation string, ctxs ...context.Context) e
 		t = t.Elem()
 	}
 
-	// Find the relation field.
 	field, ok := t.FieldByName(relation)
 	if !ok {
 		return fmt.Errorf("gai/orm: relation %q not found on %s", relation, t.Name())
 	}
 
 	tag := field.Tag.Get("gai")
-	relType, _ := parseRelationTag(tag)
+	relType, meta := parseRelationMeta(tag)
 	if relType == "" {
 		relType = "hasMany"
 	}
 
 	switch relType {
 	case "hasMany":
-		return loadHasMany(db, ctx, models, relation, field)
+		return loadHasMany(db, ctx, models, relation, field, meta)
+	case "hasOne":
+		return loadHasOne(db, ctx, models, relation, field, meta)
 	case "belongsTo":
-		return loadBelongsTo(db, ctx, models, relation, field)
+		return loadBelongsTo(db, ctx, models, relation, field, meta)
+	case "belongsToMany":
+		return loadBelongsToMany(db, ctx, models, relation, field, meta)
 	}
 
 	return fmt.Errorf("gai/orm: unsupported relation type %q", relType)
 }
 
-func loadHasMany[T any](db *DB, ctx context.Context, models []T, relation string, field reflect.StructField) error {
+type relationMeta struct {
+	model     string
+	pivot     string
+	fk        string
+	relatedFK string
+}
+
+func loadHasMany[T any](db *DB, ctx context.Context, models []T, relation string, field reflect.StructField, meta relationMeta) error {
 	var zero T
 
-	// Collect parent IDs.
 	ids := make([]any, len(models))
 	for i, m := range models {
 		v := reflect.ValueOf(m)
@@ -68,10 +77,12 @@ func loadHasMany[T any](db *DB, ctx context.Context, models []T, relation string
 		ids[i] = fieldValue(v, "ID")
 	}
 
-	// Determine child table and foreign key.
 	childType := field.Type.Elem()
 	childTable := strings.ToLower(support.Plural(support.Snake(childType.Name())))
-	fk := support.Snake(reflect.TypeOf(zero).Name()) + "_id"
+	fk := meta.fk
+	if fk == "" {
+		fk = support.Snake(reflect.TypeOf(zero).Name()) + "_id"
+	}
 
 	placeholders := make([]string, len(ids))
 	for i := range ids {
@@ -81,7 +92,7 @@ func loadHasMany[T any](db *DB, ctx context.Context, models []T, relation string
 	query := fmt.Sprintf("SELECT * FROM %s WHERE %s IN (%s)",
 		db.quote(childTable), db.quote(fk), strings.Join(placeholders, ", "))
 
-	rows, err := db.SQL.QueryContext(ctx, query, ids...)
+	rows, err := db.queryContext(ctx, query, ids...)
 	if err != nil {
 		return fmt.Errorf("gai/orm: hasMany query failed: %w", err)
 	}
@@ -92,14 +103,12 @@ func loadHasMany[T any](db *DB, ctx context.Context, models []T, relation string
 		return err
 	}
 
-	// Group children by foreign key.
 	grouped := make(map[any][]reflect.Value)
 	for _, child := range childItems {
 		fkVal := fieldValue(child, support.Camel(fk))
 		grouped[fkVal] = append(grouped[fkVal], reflect.ValueOf(child.Interface()))
 	}
 
-	// Assign to parent models.
 	for i := range models {
 		v := reflect.ValueOf(&models[i]).Elem()
 		if v.Kind() == reflect.Ptr {
@@ -117,13 +126,88 @@ func loadHasMany[T any](db *DB, ctx context.Context, models []T, relation string
 	return nil
 }
 
-func loadBelongsTo[T any](db *DB, ctx context.Context, models []T, relation string, field reflect.StructField) error {
+func loadHasOne[T any](db *DB, ctx context.Context, models []T, relation string, field reflect.StructField, meta relationMeta) error {
+	var zero T
+
+	ids := make([]any, len(models))
+	for i, m := range models {
+		v := reflect.ValueOf(m)
+		if v.Kind() == reflect.Ptr {
+			v = v.Elem()
+		}
+		ids[i] = fieldValue(v, "ID")
+	}
+
+	relType := field.Type
+	isPtr := relType.Kind() == reflect.Ptr
+	if isPtr {
+		relType = relType.Elem()
+	}
+
+	childTable := strings.ToLower(support.Plural(support.Snake(relType.Name())))
+	fk := meta.fk
+	if fk == "" {
+		fk = support.Snake(reflect.TypeOf(zero).Name()) + "_id"
+	}
+
+	placeholders := make([]string, len(ids))
+	for i := range ids {
+		placeholders[i] = placeholder(db.DriverName, i+1)
+	}
+
+	query := fmt.Sprintf("SELECT * FROM %s WHERE %s IN (%s)",
+		db.quote(childTable), db.quote(fk), strings.Join(placeholders, ", "))
+
+	rows, err := db.queryContext(ctx, query, ids...)
+	if err != nil {
+		return fmt.Errorf("gai/orm: hasOne query failed: %w", err)
+	}
+	defer rows.Close()
+
+	childItems, err := scanRowsDynamic(rows, relType)
+	if err != nil {
+		return err
+	}
+
+	byFK := make(map[any]reflect.Value)
+	for _, child := range childItems {
+		fkVal := fieldValue(child, support.Camel(fk))
+		byFK[fkVal] = reflect.ValueOf(child.Interface())
+	}
+
+	for i := range models {
+		v := reflect.ValueOf(&models[i]).Elem()
+		if v.Kind() == reflect.Ptr {
+			v = v.Elem()
+		}
+		parentID := fieldValue(v, "ID")
+		rel, ok := byFK[parentID]
+		if !ok {
+			continue
+		}
+		fld := v.FieldByName(relation)
+		if isPtr {
+			ptr := reflect.New(relType)
+			ptr.Elem().Set(rel)
+			fld.Set(ptr)
+		} else {
+			fld.Set(rel)
+		}
+	}
+
+	return nil
+}
+
+func loadBelongsTo[T any](db *DB, ctx context.Context, models []T, relation string, field reflect.StructField, meta relationMeta) error {
 	relType := field.Type
 	if relType.Kind() == reflect.Ptr {
 		relType = relType.Elem()
 	}
 
-	fk := support.Snake(relation) + "_id"
+	fk := meta.fk
+	if fk == "" {
+		fk = support.Snake(relation) + "_id"
+	}
 	relTable := strings.ToLower(support.Plural(support.Snake(relType.Name())))
 
 	ids := make([]any, 0, len(models))
@@ -150,7 +234,7 @@ func loadBelongsTo[T any](db *DB, ctx context.Context, models []T, relation stri
 	query := fmt.Sprintf("SELECT * FROM %s WHERE %s IN (%s)",
 		db.quote(relTable), db.quote("id"), strings.Join(placeholders, ", "))
 
-	rows, err := db.SQL.QueryContext(ctx, query, ids...)
+	rows, err := db.queryContext(ctx, query, ids...)
 	if err != nil {
 		return fmt.Errorf("gai/orm: belongsTo query failed: %w", err)
 	}
@@ -185,6 +269,130 @@ func loadBelongsTo[T any](db *DB, ctx context.Context, models []T, relation stri
 	return nil
 }
 
+func loadBelongsToMany[T any](db *DB, ctx context.Context, models []T, relation string, field reflect.StructField, meta relationMeta) error {
+	var zero T
+	parentName := reflect.TypeOf(zero).Name()
+	if reflect.TypeOf(zero).Kind() == reflect.Ptr {
+		parentName = reflect.TypeOf(zero).Elem().Name()
+	}
+
+	childType := field.Type.Elem()
+	childName := childType.Name()
+	childTable := strings.ToLower(support.Plural(support.Snake(childName)))
+
+	pivot := meta.pivot
+	if pivot == "" {
+		a, b := strings.ToLower(support.Snake(parentName)), strings.ToLower(support.Snake(childName))
+		if a > b {
+			a, b = b, a
+		}
+		pivot = a + "_" + b
+	}
+	fk := meta.fk
+	if fk == "" {
+		fk = support.Snake(parentName) + "_id"
+	}
+	relatedFK := meta.relatedFK
+	if relatedFK == "" {
+		relatedFK = support.Snake(childName) + "_id"
+	}
+
+	ids := make([]any, len(models))
+	for i, m := range models {
+		v := reflect.ValueOf(m)
+		if v.Kind() == reflect.Ptr {
+			v = v.Elem()
+		}
+		ids[i] = fieldValue(v, "ID")
+	}
+
+	placeholders := make([]string, len(ids))
+	for i := range ids {
+		placeholders[i] = placeholder(db.DriverName, i+1)
+	}
+
+	pivotQuery := fmt.Sprintf("SELECT %s, %s FROM %s WHERE %s IN (%s)",
+		db.quote(fk), db.quote(relatedFK), db.quote(pivot), db.quote(fk), strings.Join(placeholders, ", "))
+
+	rows, err := db.queryContext(ctx, pivotQuery, ids...)
+	if err != nil {
+		return fmt.Errorf("gai/orm: belongsToMany pivot query failed: %w", err)
+	}
+
+	type pair struct{ parent, related any }
+	var pairs []pair
+	relatedIDs := make([]any, 0)
+	seen := map[any]struct{}{}
+	for rows.Next() {
+		var parentID, relatedID any
+		if err := rows.Scan(&parentID, &relatedID); err != nil {
+			rows.Close()
+			return err
+		}
+		pairs = append(pairs, pair{parentID, relatedID})
+		if _, ok := seen[relatedID]; !ok {
+			seen[relatedID] = struct{}{}
+			relatedIDs = append(relatedIDs, relatedID)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+
+	if len(relatedIDs) == 0 {
+		return nil
+	}
+
+	ph2 := make([]string, len(relatedIDs))
+	for i := range relatedIDs {
+		ph2[i] = placeholder(db.DriverName, i+1)
+	}
+	relQuery := fmt.Sprintf("SELECT * FROM %s WHERE %s IN (%s)",
+		db.quote(childTable), db.quote("id"), strings.Join(ph2, ", "))
+
+	relRows, err := db.queryContext(ctx, relQuery, relatedIDs...)
+	if err != nil {
+		return fmt.Errorf("gai/orm: belongsToMany query failed: %w", err)
+	}
+	defer relRows.Close()
+
+	relItems, err := scanRowsDynamic(relRows, childType)
+	if err != nil {
+		return err
+	}
+
+	byID := make(map[any]reflect.Value)
+	for _, item := range relItems {
+		id := fieldValue(item, "ID")
+		byID[id] = reflect.ValueOf(item.Interface())
+	}
+
+	grouped := make(map[any][]reflect.Value)
+	for _, p := range pairs {
+		if rel, ok := byID[p.related]; ok {
+			grouped[p.parent] = append(grouped[p.parent], rel)
+		}
+	}
+
+	for i := range models {
+		v := reflect.ValueOf(&models[i]).Elem()
+		if v.Kind() == reflect.Ptr {
+			v = v.Elem()
+		}
+		parentID := fieldValue(v, "ID")
+		children := grouped[parentID]
+		sliceVal := reflect.MakeSlice(field.Type, len(children), len(children))
+		for j, c := range children {
+			sliceVal.Index(j).Set(c)
+		}
+		v.FieldByName(relation).Set(sliceVal)
+	}
+
+	return nil
+}
+
 func scanRowsDynamic(rows *sql.Rows, t reflect.Type) ([]reflect.Value, error) {
 	cols, err := rows.Columns()
 	if err != nil {
@@ -203,18 +411,28 @@ func scanRowsDynamic(rows *sql.Rows, t reflect.Type) ([]reflect.Value, error) {
 	return results, rows.Err()
 }
 
-func parseRelationTag(tag string) (string, string) {
+func parseRelationMeta(tag string) (string, relationMeta) {
+	var relType string
+	var meta relationMeta
 	for _, part := range strings.Split(tag, ";") {
 		part = strings.TrimSpace(part)
 		kv := strings.SplitN(part, ":", 2)
-		switch kv[0] {
-		case "hasMany", "hasOne", "belongsTo":
-			model := ""
-			if len(kv) == 2 {
-				model = kv[1]
-			}
-			return kv[0], model
+		key := kv[0]
+		val := ""
+		if len(kv) == 2 {
+			val = kv[1]
+		}
+		switch key {
+		case "hasMany", "hasOne", "belongsTo", "belongsToMany":
+			relType = key
+			meta.model = val
+		case "pivot":
+			meta.pivot = val
+		case "fk":
+			meta.fk = val
+		case "relatedFk":
+			meta.relatedFK = val
 		}
 	}
-	return "", ""
+	return relType, meta
 }

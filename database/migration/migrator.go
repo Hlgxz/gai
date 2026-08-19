@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/Hlgxz/gai/database/driver"
@@ -65,7 +66,7 @@ func (m *Migrator) Migrate() error {
 		sqlStr := mig.Up(m.driver)
 		slog.Info("migrating", "name", mig.Name)
 
-		if _, err := m.db.Exec(sqlStr); err != nil {
+		if err := m.execSQL(sqlStr); err != nil {
 			return fmt.Errorf("gai/migration: failed to run %s: %w", mig.Name, err)
 		}
 
@@ -115,7 +116,7 @@ func (m *Migrator) Rollback() error {
 		sqlStr := mig.Down(m.driver)
 		slog.Info("rolling back", "name", name)
 
-		if _, err := m.db.Exec(sqlStr); err != nil {
+		if err := m.execSQL(sqlStr); err != nil {
 			return fmt.Errorf("gai/migration: failed to rollback %s: %w", name, err)
 		}
 
@@ -155,6 +156,63 @@ func (m *Migrator) Status() ([]MigrationStatus, error) {
 		}
 	}
 	return result, nil
+}
+
+// Reset rolls back every applied batch.
+func (m *Migrator) Reset() error {
+	if err := m.ensureTable(); err != nil {
+		return err
+	}
+	for {
+		batch, err := m.lastBatch()
+		if err != nil {
+			return err
+		}
+		if batch == 0 {
+			return nil
+		}
+		if err := m.Rollback(); err != nil {
+			return err
+		}
+	}
+}
+
+// Fresh resets all migrations then re-runs them.
+func (m *Migrator) Fresh() error {
+	if err := m.Reset(); err != nil {
+		return err
+	}
+	return m.Migrate()
+}
+
+func (m *Migrator) execSQL(sqlStr string) error {
+	stmts := splitSQL(sqlStr)
+	if len(stmts) == 0 {
+		return nil
+	}
+	tx, err := m.db.Begin()
+	if err != nil {
+		return err
+	}
+	for _, stmt := range stmts {
+		if _, err := tx.Exec(stmt); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func splitSQL(s string) []string {
+	parts := strings.Split(s, ";")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // MigrationStatus represents the run state of a migration.

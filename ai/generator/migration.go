@@ -130,8 +130,8 @@ func migrationTimestamp() string {
 
 // ---------------------------------------------------------- Helpers
 
-func toSnake(s string) string { return support.Snake(s) }
-func toCamel(s string) string { return support.Camel(s) }
+func toSnake(s string) string   { return support.Snake(s) }
+func toCamel(s string) string   { return support.Camel(s) }
 func pluralize(s string) string { return support.Plural(s) }
 
 func itoa(n int) string {

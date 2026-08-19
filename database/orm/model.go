@@ -30,17 +30,33 @@ type FieldInfo struct {
 	Index      bool
 	Default    string
 	SoftDelete bool
-	Relation   string // hasMany, belongsTo, hasOne
+	Relation   string // hasMany, belongsTo, hasOne, belongsToMany
 	RelModel   string
+	Pivot      string
+	ForeignKey string
+	RelatedFK  string
 }
 
 // TableName derives a table name from a struct type following convention:
-// "User" -> "users", "BlogPost" -> "blog_posts".
+// "User" -> "users", "BlogPost" -> "blog_posts". Models may override this
+// by implementing TableName() string (value or pointer receiver).
 func TableName(model any) string {
+	if namer, ok := model.(interface{ TableName() string }); ok {
+		return namer.TableName()
+	}
+
 	t := reflect.TypeOf(model)
+	if t == nil {
+		return ""
+	}
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
+	ptr := reflect.New(t)
+	if namer, ok := ptr.Interface().(interface{ TableName() string }); ok {
+		return namer.TableName()
+	}
+
 	return strings.ToLower(support.Plural(support.Snake(t.Name())))
 }
 
@@ -142,9 +158,15 @@ func parseTag(tag string, info *FieldInfo) {
 		case "softDelete":
 			info.SoftDelete = true
 			info.Nullable = true
-		case "hasMany", "hasOne", "belongsTo":
+		case "hasMany", "hasOne", "belongsTo", "belongsToMany":
 			info.Relation = key
 			info.RelModel = val
+		case "pivot":
+			info.Pivot = val
+		case "fk":
+			info.ForeignKey = val
+		case "relatedFk":
+			info.RelatedFK = val
 		}
 	}
 }

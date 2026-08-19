@@ -21,6 +21,8 @@ func migrateCmd() *cobra.Command {
 	cmd.AddCommand(
 		migrateRollbackCmd(),
 		migrateStatusCmd(),
+		migrateFreshCmd(),
+		migrateResetCmd(),
 	)
 
 	return cmd
@@ -45,6 +47,28 @@ func migrateStatusCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fmt.Println("Migration status:")
 			fmt.Println("Note: Wire up migrator.Status() in your application.")
+			return nil
+		},
+	}
+}
+
+func migrateFreshCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "fresh",
+		Short: "Rollback all migrations and re-run them",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			fmt.Println("Note: Wire up migrator.Fresh() in your application.")
+			return nil
+		},
+	}
+}
+
+func migrateResetCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "reset",
+		Short: "Rollback all migrations",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			fmt.Println("Note: Wire up migrator.Reset() in your application.")
 			return nil
 		},
 	}

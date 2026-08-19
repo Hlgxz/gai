@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -107,6 +108,15 @@ func (m *Manager) GetInt(key string, fallback ...int) int {
 		return int(v)
 	case int64:
 		return int(v)
+	case string:
+		n, err := strconv.Atoi(v)
+		if err == nil {
+			return n
+		}
+		if len(fallback) > 0 {
+			return fallback[0]
+		}
+		return 0
 	default:
 		if len(fallback) > 0 {
 			return fallback[0]

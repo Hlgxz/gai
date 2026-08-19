@@ -43,18 +43,18 @@ type modelData struct {
 }
 
 type modelField struct {
-	GoName  string
-	GoType  string
+	GoName   string
+	GoType   string
 	JSONName string
-	Column  string
+	Column   string
 	TagExtra string
 }
 
 type modelRelation struct {
-	Name    string
-	GoType  string
+	Name     string
+	GoType   string
 	JSONName string
-	RelType string
+	RelType  string
 }
 
 // GenerateModel produces the Go model file content from a schema.
@@ -99,9 +99,9 @@ func (g *Generator) GenerateModel(s *schema.Schema) (string, error) {
 	var relations []modelRelation
 	for _, r := range s.Relations {
 		rel := modelRelation{
-			Name:    r.Model,
+			Name:     r.Model,
 			JSONName: toSnake(r.Model),
-			RelType: r.Type,
+			RelType:  r.Type,
 		}
 		switch r.Type {
 		case "hasMany":

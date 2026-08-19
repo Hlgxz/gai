@@ -11,11 +11,14 @@ import (
 	"github.com/Hlgxz/gai/support"
 )
 
-// DB wraps *sql.DB with driver metadata.
+// DB wraps *sql.DB with driver metadata. When tx is set, all queries
+// run inside that transaction (see Transaction).
 type DB struct {
 	SQL        *sql.DB
+	tx         *sql.Tx
 	DriverName string
 	QuoteIdent func(name string) string
+	Logger     LogFunc
 }
 
 func (db *DB) quote(name string) string {
@@ -37,18 +40,29 @@ type Pagination[T any] struct {
 // QueryBuilder provides a fluent, chainable interface for building SQL queries,
 // inspired by Laravel's Eloquent query builder.
 type QueryBuilder struct {
-	db         *DB
-	ctx        context.Context
-	table      string
-	selects    []string
-	wheres     []whereClause
-	orders     []orderClause
-	limitVal   int
-	offsetVal  int
-	groupBy    []string
-	having     []whereClause
-	softDelete bool
-	modelType  reflect.Type
+	db          *DB
+	ctx         context.Context
+	table       string
+	selects     []string
+	wheres      []whereClause
+	orders      []orderClause
+	limitVal    int
+	offsetVal   int
+	groupBy     []string
+	having      []whereClause
+	joins       []joinClause
+	softDelete  bool
+	onlyTrashed bool
+	modelType   reflect.Type
+}
+
+type joinClause struct {
+	kind  string // INNER JOIN, LEFT JOIN, RIGHT JOIN
+	table string
+	left  string
+	op    string
+	right string
+	raw   string
 }
 
 type whereClause struct {
@@ -184,6 +198,40 @@ func (q *QueryBuilder) Having(column, operator string, value any) *QueryBuilder 
 	return q
 }
 
+// Join adds an INNER JOIN.
+func (q *QueryBuilder) Join(table, left, operator, right string) *QueryBuilder {
+	q.joins = append(q.joins, joinClause{kind: "INNER JOIN", table: safeColumn(table), left: safeColumn(left), op: sanitizeOperator(operator), right: safeColumn(right)})
+	return q
+}
+
+// LeftJoin adds a LEFT JOIN.
+func (q *QueryBuilder) LeftJoin(table, left, operator, right string) *QueryBuilder {
+	q.joins = append(q.joins, joinClause{kind: "LEFT JOIN", table: safeColumn(table), left: safeColumn(left), op: sanitizeOperator(operator), right: safeColumn(right)})
+	return q
+}
+
+// RightJoin adds a RIGHT JOIN.
+func (q *QueryBuilder) RightJoin(table, left, operator, right string) *QueryBuilder {
+	q.joins = append(q.joins, joinClause{kind: "RIGHT JOIN", table: safeColumn(table), left: safeColumn(left), op: sanitizeOperator(operator), right: safeColumn(right)})
+	return q
+}
+
+// JoinRaw adds a raw JOIN fragment.
+func (q *QueryBuilder) JoinRaw(raw string) *QueryBuilder {
+	q.joins = append(q.joins, joinClause{raw: raw})
+	return q
+}
+
+// WhereBetween adds a BETWEEN condition (inclusive range).
+func (q *QueryBuilder) WhereBetween(column string, min, max any) *QueryBuilder {
+	return q.Where(column, ">=", min).Where(column, "<=", max)
+}
+
+// WhereLike adds a LIKE condition.
+func (q *QueryBuilder) WhereLike(column, pattern string) *QueryBuilder {
+	return q.Where(column, "LIKE", pattern)
+}
+
 // Scope applies a reusable Scope function.
 func (q *QueryBuilder) Scope(scopes ...Scope) *QueryBuilder {
 	for _, s := range scopes {
@@ -195,6 +243,14 @@ func (q *QueryBuilder) Scope(scopes ...Scope) *QueryBuilder {
 // WithTrashed disables the automatic soft-delete filter for this query.
 func (q *QueryBuilder) WithTrashed() *QueryBuilder {
 	q.softDelete = false
+	q.onlyTrashed = false
+	return q
+}
+
+// OnlyTrashed returns only soft-deleted rows.
+func (q *QueryBuilder) OnlyTrashed() *QueryBuilder {
+	q.softDelete = false
+	q.onlyTrashed = true
 	return q
 }
 
@@ -207,6 +263,7 @@ func (q *QueryBuilder) clone() *QueryBuilder {
 	c.orders = append([]orderClause(nil), q.orders...)
 	c.groupBy = append([]string(nil), q.groupBy...)
 	c.having = append([]whereClause(nil), q.having...)
+	c.joins = append([]joinClause(nil), q.joins...)
 	return &c
 }
 
@@ -215,7 +272,7 @@ func (q *QueryBuilder) clone() *QueryBuilder {
 // Get executes the query and returns all matching rows scanned into T.
 func Get[T any](q *QueryBuilder) ([]T, error) {
 	query, args := q.buildSelect()
-	rows, err := q.db.SQL.QueryContext(q.ctx, query, args...)
+	rows, err := q.db.queryContext(q.ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("gai/orm: query failed: %w", err)
 	}
@@ -246,7 +303,7 @@ func Count(q *QueryBuilder) (int, error) {
 	query, args := cq.buildSelect()
 
 	var count int
-	if err := q.db.SQL.QueryRowContext(q.ctx, query, args...).Scan(&count); err != nil {
+	if err := q.db.queryRowContext(q.ctx, query, args...).Scan(&count); err != nil {
 		return 0, fmt.Errorf("gai/orm: count failed: %w", err)
 	}
 	return count, nil
@@ -320,7 +377,7 @@ func Create[T any](db *DB, model *T, ctxs ...context.Context) (*T, error) {
 		}
 		cols = append(cols, db.quote(f.Column))
 		placeholders = append(placeholders, placeholder(db.DriverName, idx))
-		args = append(args, val)
+		args = append(args, bindArg(val))
 		idx++
 	}
 
@@ -331,13 +388,17 @@ func Create[T any](db *DB, model *T, ctxs ...context.Context) (*T, error) {
 	)
 
 	var id int64
+	if err := callHook(model, "BeforeCreate"); err != nil {
+		return nil, err
+	}
+
 	if db.DriverName == "postgres" {
 		query += " RETURNING id"
-		if err := db.SQL.QueryRowContext(ctx, query, args...).Scan(&id); err != nil {
+		if err := db.queryRowContext(ctx, query, args...).Scan(&id); err != nil {
 			return nil, fmt.Errorf("gai/orm: insert failed: %w", err)
 		}
 	} else {
-		result, err := db.SQL.ExecContext(ctx, query, args...)
+		result, err := db.execContext(ctx, query, args...)
 		if err != nil {
 			return nil, fmt.Errorf("gai/orm: insert failed: %w", err)
 		}
@@ -350,6 +411,10 @@ func Create[T any](db *DB, model *T, ctxs ...context.Context) (*T, error) {
 	setFieldValue(v, "ID", uint64(id))
 	setFieldValue(v, "CreatedAt", now)
 	setFieldValue(v, "UpdatedAt", now)
+
+	if err := callHook(model, "AfterCreate"); err != nil {
+		return nil, err
+	}
 
 	return model, nil
 }
@@ -372,6 +437,10 @@ func Update[T any](db *DB, model *T, ctxs ...context.Context) error {
 
 	now := time.Now()
 
+	if err := callHook(model, "BeforeUpdate"); err != nil {
+		return err
+	}
+
 	for _, f := range fields {
 		if f.Relation != "" {
 			continue
@@ -385,7 +454,7 @@ func Update[T any](db *DB, model *T, ctxs ...context.Context) error {
 			val = now
 		}
 		sets = append(sets, fmt.Sprintf("%s = %s", db.quote(f.Column), placeholder(db.DriverName, idx)))
-		args = append(args, val)
+		args = append(args, bindArg(val))
 		idx++
 	}
 
@@ -397,12 +466,12 @@ func Update[T any](db *DB, model *T, ctxs ...context.Context) error {
 		placeholder(db.DriverName, idx),
 	)
 
-	_, err := db.SQL.ExecContext(ctx, query, args...)
+	_, err := db.execContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("gai/orm: update failed: %w", err)
 	}
 	setFieldValue(v, "UpdatedAt", now)
-	return nil
+	return callHook(model, "AfterUpdate")
 }
 
 // Delete removes a record. If the model supports soft deletes, it sets
@@ -425,6 +494,10 @@ func Delete[T any](db *DB, model *T, ctxs ...context.Context) error {
 		}
 	}
 
+	if err := callHook(model, "BeforeDelete"); err != nil {
+		return err
+	}
+
 	idVal := fieldValue(v, "ID")
 
 	if hasSoftDelete {
@@ -432,18 +505,18 @@ func Delete[T any](db *DB, model *T, ctxs ...context.Context) error {
 		query := fmt.Sprintf("UPDATE %s SET %s = %s WHERE %s = %s",
 			db.quote(table), db.quote("deleted_at"), placeholder(db.DriverName, 1),
 			db.quote("id"), placeholder(db.DriverName, 2))
-		if _, err := db.SQL.ExecContext(ctx, query, now, idVal); err != nil {
+		if _, err := db.execContext(ctx, query, bindArg(now), idVal); err != nil {
 			return fmt.Errorf("gai/orm: soft delete failed: %w", err)
 		}
-		return nil
+		return callHook(model, "AfterDelete")
 	}
 
 	query := fmt.Sprintf("DELETE FROM %s WHERE %s = %s",
 		db.quote(table), db.quote("id"), placeholder(db.DriverName, 1))
-	if _, err := db.SQL.ExecContext(ctx, query, idVal); err != nil {
+	if _, err := db.execContext(ctx, query, idVal); err != nil {
 		return fmt.Errorf("gai/orm: delete failed: %w", err)
 	}
-	return nil
+	return callHook(model, "AfterDelete")
 }
 
 // ---------------------------------------------------------- SQL Building
@@ -462,10 +535,21 @@ func (q *QueryBuilder) buildSelect() (string, []any) {
 	buf.WriteString(" FROM ")
 	buf.WriteString(q.db.quote(q.table))
 
+	for _, j := range q.joins {
+		if j.raw != "" {
+			buf.WriteString(" ")
+			buf.WriteString(j.raw)
+			continue
+		}
+		buf.WriteString(fmt.Sprintf(" %s %s ON %s %s %s", j.kind, q.db.quote(j.table), j.left, j.op, j.right))
+	}
+
 	// Inject soft-delete filter.
 	effectiveWheres := q.wheres
 	if q.softDelete {
 		effectiveWheres = append([]whereClause{{raw: "deleted_at IS NULL", boolean: "AND"}}, effectiveWheres...)
+	} else if q.onlyTrashed {
+		effectiveWheres = append([]whereClause{{raw: "deleted_at IS NOT NULL", boolean: "AND"}}, effectiveWheres...)
 	}
 
 	if len(effectiveWheres) > 0 {
@@ -563,7 +647,7 @@ func mapColumnsToFields(v reflect.Value, cols []string) []any {
 	dest := make([]any, len(cols))
 	for i, col := range cols {
 		if ptr, ok := fieldMap[col]; ok {
-			dest[i] = ptr
+			dest[i] = wrapScanDest(ptr)
 		} else {
 			var discard any
 			dest[i] = &discard

@@ -14,6 +14,7 @@ func generateCmd() *cobra.Command {
 	var schemaPath string
 	var module string
 	var outputDir string
+	var openapi bool
 
 	cmd := &cobra.Command{
 		Use:   "generate",
@@ -27,12 +28,35 @@ func generateCmd() *cobra.Command {
 				outputDir = "."
 			}
 
-			gen := generator.NewGenerator(outputDir, module)
-
 			info, err := os.Stat(schemaPath)
 			if err != nil {
 				return fmt.Errorf("schema path not found: %s", schemaPath)
 			}
+
+			if openapi {
+				var schemas []*schema.Schema
+				if info.IsDir() {
+					schemas, err = schema.ParseDir(schemaPath)
+				} else {
+					var s *schema.Schema
+					s, err = schema.ParseFile(schemaPath)
+					if s != nil {
+						schemas = []*schema.Schema{s}
+					}
+				}
+				if err != nil {
+					return err
+				}
+				doc := generator.GenerateOpenAPI("Gai API", schemas)
+				out := "openapi.yaml"
+				if err := os.WriteFile(out, []byte(doc), 0o644); err != nil {
+					return err
+				}
+				fmt.Printf("created: %s\n", out)
+				return nil
+			}
+
+			gen := generator.NewGenerator(outputDir, module)
 
 			if info.IsDir() {
 				fmt.Printf("Generating from all schemas in: %s\n", schemaPath)
@@ -51,6 +75,7 @@ func generateCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&schemaPath, "schema", "s", "schemas", "Path to schema file or directory")
 	cmd.Flags().StringVarP(&module, "module", "m", "", "Go module path (auto-detected from go.mod)")
 	cmd.Flags().StringVarP(&outputDir, "output", "o", ".", "Output directory")
+	cmd.Flags().BoolVar(&openapi, "openapi", false, "Generate OpenAPI 3 spec instead of Go code")
 
 	return cmd
 }
@@ -87,4 +112,3 @@ func splitLines(s string) []string {
 	}
 	return lines
 }
-

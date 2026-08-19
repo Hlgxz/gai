@@ -7,13 +7,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var version = "0.1.0-alpha"
+var version = "0.2.0"
 
 func main() {
 	root := &cobra.Command{
-		Use:   "gai",
-		Short: "Gai - AI-native Go web framework CLI",
-		Long:  "Gai is a CLI tool for the Gai framework, providing project scaffolding, code generation, database migration, and AI-assisted development.",
+		Use:     "gai",
+		Short:   "Gai - AI-native Go web framework CLI",
+		Long:    "Gai is a CLI tool for the Gai framework, providing project scaffolding, code generation, database migration, and AI-assisted development.",
 		Version: version,
 	}
 

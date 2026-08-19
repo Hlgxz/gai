@@ -10,10 +10,10 @@ import (
 // Laravel's Service Container. It supports both transient (Bind) and
 // singleton (Singleton) bindings, resolved lazily on first use.
 type Container struct {
-	mu         sync.RWMutex
-	bindings   map[string]*binding
-	instances  map[string]any
-	aliases    map[reflect.Type]string
+	mu        sync.RWMutex
+	bindings  map[string]*binding
+	instances map[string]any
+	aliases   map[reflect.Type]string
 }
 
 type binding struct {

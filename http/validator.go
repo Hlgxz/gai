@@ -48,6 +48,7 @@ type Validator struct {
 	data   map[string]any
 	rules  map[string]string
 	errors ValidationErrors
+	store  RowExister
 }
 
 // NewValidator creates a validator for the given data and rules.
@@ -77,6 +78,11 @@ func (v *Validator) Validate() ValidationErrors {
 				if !exists || isEmpty(value) {
 					v.addError(field, fmt.Sprintf("%s is required", field))
 				}
+				continue
+			}
+
+			if ruleName == "required_if" {
+				v.applyRule(field, value, exists, ruleName, ruleParam)
 				continue
 			}
 
@@ -147,6 +153,8 @@ func (v *Validator) Validate() ValidationErrors {
 						v.addError(field, fmt.Sprintf("%s format is invalid", field))
 					}
 				}
+			default:
+				v.applyRule(field, value, exists, ruleName, ruleParam)
 			}
 		}
 	}

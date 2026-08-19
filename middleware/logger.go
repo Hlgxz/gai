@@ -55,6 +55,7 @@ func Logger() ghttp.HandlerFunc {
 			"status", sw.code,
 			"duration", time.Since(start).String(),
 			"ip", c.ClientIP(),
+			"request_id", RequestIDFrom(c),
 		)
 	}
 }

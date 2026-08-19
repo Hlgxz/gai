@@ -9,16 +9,16 @@ Gai 是一个 AI 原生的 Go Web 全栈框架，融合 Go 语言的简洁高效
 ## 特性
 
 - **AI 原生开发** — 内置全平台 AI Agent Rules，支持所有主流 AI 编程工具即开即用
-
-- **Schema 驱动** — 用 YAML 描述业务模型，自动生成 Model、Controller、Migration、Routes
+- **Schema 驱动** — 用 YAML 描述业务模型，自动生成 Model、Controller、Migration、Routes、OpenAPI
 - **优雅的 API** — Go 惯用风格为主，关键处借鉴 Laravel 的链式调用和表达式路由
 - **服务容器** — 类 Laravel 的依赖注入容器，支持 Singleton、Bind、ServiceProvider
-- **多数据库 ORM** — 链式查询构建器，支持 MySQL、PostgreSQL、SQLite
-- **数据库迁移** — 版本化的数据库迁移系统，支持 Up/Down/Rollback
-- **认证系统** — 多 Guard 设计，内置 JWT + 微信小程序认证
+- **多数据库 ORM** — 事务、Join、预加载、软删、批量写入、聚合；MySQL / PostgreSQL / SQLite
+- **数据库迁移** — 版本化迁移，支持 Up/Down/Rollback/Fresh/Reset + Seeder
+- **认证与权限** — 多 Guard、JWT access/refresh 作废、RBAC
+- **缓存 / 队列 / 会话 / 存储 / 邮件 / 调度 / 事件**
 - **小程序 SDK** — 微信/支付宝小程序登录、支付、消息推送
-- **请求校验** — Laravel 风格的管道式校验规则 (required|email|min:5)
-- **内置中间件** — CORS、Logger、Recovery、RateLimit 开箱即用
+- **请求校验** — Laravel 风格管道规则，支持 unique/exists/confirmed 与 struct tag
+- **内置中间件** — CORS、Logger、Recovery、RateLimit、RequestID、Gzip、Timeout、CSRF
 - **CLI 工具** — `gai` 命令行工具，项目脚手架、代码生成一键完成
 
 
@@ -248,9 +248,14 @@ if errs := validator.Validate(); errs != nil {
 | `gai make middleware <Name>` | 生成中间件 |
 | `gai make migration <name>` | 生成迁移文件 |
 | `gai generate --schema <path>` | 从 Schema 生成代码 |
+| `gai generate --schema <path> --openapi` | 从 Schema 生成 OpenAPI 3 文档 |
+| `gai make seeder <Name>` | 生成 Seeder |
+| `gai make job <Name>` | 生成队列 Job |
 | `gai migrate` | 执行数据库迁移 |
 | `gai migrate rollback` | 回滚迁移 |
 | `gai migrate status` | 查看迁移状态 |
+| `gai migrate fresh` | 回滚全部迁移并重新执行 |
+| `gai migrate reset` | 回滚全部迁移 |
 
 ## 技术栈
 

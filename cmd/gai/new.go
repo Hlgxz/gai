@@ -59,24 +59,24 @@ func createProject(name, module string, port int) error {
 	}
 
 	files := map[string]string{
-		"go.mod":                           goModContent(module),
-		"main.go":                          mainGoContent(module, port),
-		".env":                             envContent(port),
-		"config/app.yaml":                  appYamlContent(name, port),
-		"schemas/.gitkeep":                 "",
-		"database/migrations/.gitkeep":     "",
-		"routes/routes.go":                 routesGoContent(module),
-		".gitignore":                       gitignoreContent(),
-		".cursor/rules/gai.mdc":            cursorRulesContent(module),
-		"CLAUDE.md":                        claudeContent(module),
-		"AGENTS.md":                        agentsContent(module),
-		".github/copilot-instructions.md":  copilotContent(module),
-		".windsurfrules":                   windsurfContent(module),
-		".kiro/rules.md":                   kiroContent(module),
-		".gemini/style-guide.md":           geminiContent(module),
-		".roo/rules.md":                    rooContent(module),
-		".clinerules":                      clineContent(),
-		".augment/rules.md":                augmentContent(module),
+		"go.mod":                          goModContent(module),
+		"main.go":                         mainGoContent(module, port),
+		".env":                            envContent(port),
+		"config/app.yaml":                 appYamlContent(name, port),
+		"schemas/.gitkeep":                "",
+		"database/migrations/.gitkeep":    "",
+		"routes/routes.go":                routesGoContent(module),
+		".gitignore":                      gitignoreContent(),
+		".cursor/rules/gai.mdc":           cursorRulesContent(module),
+		"CLAUDE.md":                       claudeContent(module),
+		"AGENTS.md":                       agentsContent(module),
+		".github/copilot-instructions.md": copilotContent(module),
+		".windsurfrules":                  windsurfContent(module),
+		".kiro/rules.md":                  kiroContent(module),
+		".gemini/style-guide.md":          geminiContent(module),
+		".roo/rules.md":                   rooContent(module),
+		".clinerules":                     clineContent(),
+		".augment/rules.md":               augmentContent(module),
 	}
 
 	for path, content := range files {
@@ -115,6 +115,7 @@ import (
 	"log"
 
 	"github.com/Hlgxz/gai"
+	"github.com/Hlgxz/gai/auth"
 	"%s/routes"
 )
 
@@ -123,6 +124,17 @@ func main() {
 	app.LoadConfig("config")
 	app.UseDefaults()
 
+	if _, err := app.OpenDB(); err != nil {
+		log.Printf("database: %%v (continuing without DB)", err)
+	}
+
+	secret := app.Config().GetString("app.auth.guards.jwt.secret", "change-me")
+	ttl := app.Config().GetInt("app.auth.guards.jwt.ttl", 7200)
+	guards := auth.NewManager("jwt")
+	guards.RegisterGuard(auth.NewJWTGuard(secret, ttl))
+	app.Instance("auth", guards)
+
+	app.Router().Get("/health", app.Health())
 	routes.Register(app)
 
 	addr := fmt.Sprintf(":%%d", %d)
@@ -156,6 +168,8 @@ debug: ${APP_DEBUG:true}
 database:
   driver: ${DB_DRIVER:sqlite}
   dsn: ${DB_DATABASE:storage/database.db}
+  max_open_conns: 25
+  max_idle_conns: 5
 
 auth:
   default: jwt
@@ -183,13 +197,9 @@ func Register(app *gai.Application) {
 	r.Get("/", func(c *ghttp.Context) {
 		c.Success(map[string]string{
 			"framework": "Gai",
-			"version":   "0.1.0",
+			"version":   "0.2.0",
 			"message":   "Welcome to Gai! Define once, generate everything.",
 		})
-	})
-
-	r.Get("/health", func(c *ghttp.Context) {
-		c.OK(map[string]string{"status": "ok"})
 	})
 }
 `

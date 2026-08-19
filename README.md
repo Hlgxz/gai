@@ -9,15 +9,16 @@ Gai is an AI-native full-stack Go web framework that blends Go's simplicity with
 ## Features
 
 - **AI-Native Development** — Built-in rules for all major AI coding tools; every generated project is AI-ready out of the box
-- **Schema-Driven** — Define models in YAML, auto-generate Model, Controller, Migration, and Routes
+- **Schema-Driven** — Define models in YAML, auto-generate Model, Controller, Migration, Routes, and OpenAPI
 - **Elegant API** — Go-idiomatic core with Laravel-inspired chain calls and expressive routing
 - **Service Container** — Laravel-style DI container with Singleton, Bind, and ServiceProvider
-- **Multi-DB ORM** — Generic chainable query builder supporting MySQL, PostgreSQL, and SQLite
-- **Database Migrations** — Versioned migration system with Up/Down/Rollback
-- **Auth System** — Multi-guard design with built-in JWT + WeChat mini-program authentication
+- **Multi-DB ORM** — Transactions, joins, eager load, soft deletes, bulk insert, aggregates; MySQL / PostgreSQL / SQLite
+- **Database Migrations** — Versioned migrations with Up/Down/Rollback/Fresh/Reset and seeders
+- **Auth & RBAC** — Multi-guard JWT with refresh/revoke plus role-based permissions
+- **Cache / Queue / Session / Storage / Mail / Schedule / Events**
 - **Mini-Program SDK** — WeChat / Alipay login, payment, and push notifications
-- **Request Validation** — Laravel-style pipe rules (`required|email|min:5`)
-- **Built-in Middleware** — CORS, Logger, Recovery, RateLimit ready to go
+- **Request Validation** — Laravel-style pipe rules including unique/exists/confirmed and struct tags
+- **Built-in Middleware** — CORS, Logger, Recovery, RateLimit, RequestID, Gzip, Timeout, CSRF
 - **CLI Toolkit** — `gai` command-line tool for scaffolding and code generation
 
 ## AI-Native Development
@@ -246,9 +247,14 @@ if errs := validator.Validate(); errs != nil {
 | `gai make middleware <Name>` | Generate middleware |
 | `gai make migration <name>` | Generate a migration file |
 | `gai generate --schema <path>` | Generate code from schema |
+| `gai generate --schema <path> --openapi` | Generate an OpenAPI 3 spec from schemas |
+| `gai make seeder <Name>` | Generate a seeder |
+| `gai make job <Name>` | Generate a queue job stub |
 | `gai migrate` | Run database migrations |
 | `gai migrate rollback` | Rollback last migration batch |
 | `gai migrate status` | Show migration status |
+| `gai migrate fresh` | Rollback all migrations and re-run |
+| `gai migrate reset` | Rollback all migrations |
 
 ## Tech Stack
 

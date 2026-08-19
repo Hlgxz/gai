@@ -36,13 +36,16 @@ type Context struct {
 	handlers []HandlerFunc
 	index    int
 
-	mu       sync.RWMutex
-	written  bool
-	status   int
+	mu      sync.RWMutex
+	written bool
+	status  int
 
 	bodyOnce sync.Once
 	bodyBuf  []byte
 	bodyErr  error
+
+	trustAllProxies bool
+	trustedProxies  []*net.IPNet
 }
 
 // NewContext creates a fresh Context for the given request cycle.
@@ -205,19 +208,19 @@ func (c *Context) FullURL() string {
 	return fmt.Sprintf("%s://%s%s", scheme, c.Request.Host, c.Request.RequestURI)
 }
 
-// ClientIP extracts the client's IP address, stripping port if present.
+// ClientIP extracts the client's IP address. X-Forwarded-For / X-Real-IP
+// are honoured only when the remote address is a trusted proxy.
 func (c *Context) ClientIP() string {
-	if forwarded := c.Request.Header.Get("X-Forwarded-For"); forwarded != "" {
-		return strings.TrimSpace(strings.SplitN(forwarded, ",", 2)[0])
+	remote := c.remoteIP()
+	if c.isTrustedProxy(remote) {
+		if forwarded := c.Request.Header.Get("X-Forwarded-For"); forwarded != "" {
+			return strings.TrimSpace(strings.SplitN(forwarded, ",", 2)[0])
+		}
+		if realIP := c.Request.Header.Get("X-Real-IP"); realIP != "" {
+			return strings.TrimSpace(realIP)
+		}
 	}
-	if realIP := c.Request.Header.Get("X-Real-IP"); realIP != "" {
-		return strings.TrimSpace(realIP)
-	}
-	ip, _, err := net.SplitHostPort(c.Request.RemoteAddr)
-	if err != nil {
-		return c.Request.RemoteAddr
-	}
-	return ip
+	return remote
 }
 
 // Header returns a request header value.
