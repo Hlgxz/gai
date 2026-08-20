@@ -26,22 +26,36 @@ func init() {
 			{{- range .Fields }}
 			b.{{ .BlueprintCall }}
 			{{- end }}
+			{{- range .Relations }}
+			{{ . }}
+			{{- end }}
 			b.Timestamps()
 			b.SoftDeletes()
-			return b.ToCreateSQL()
+			sql := b.ToCreateSQL()
+			{{- if .PivotSQL }}
+			{{ .PivotSQL }}
+			{{- end }}
+			return sql
 		},
 		Down: func(drv driver.Driver) string {
 			b := migration.NewBlueprint("{{ .Table }}", drv)
-			return b.ToDropSQL()
+			sql := b.ToDropSQL()
+			{{- if .PivotTable }}
+			sql += "; DROP TABLE IF EXISTS {{ .PivotTable }}"
+			{{- end }}
+			return sql
 		},
 	})
 }
 `
 
 type migrationData struct {
-	Name   string
-	Table  string
-	Fields []migrationField
+	Name       string
+	Table      string
+	Fields     []migrationField
+	Relations  []string
+	PivotSQL   string
+	PivotTable string
 }
 
 type migrationField struct {
@@ -62,6 +76,7 @@ func (g *Generator) GenerateMigration(s *schema.Schema) (string, error) {
 		Table:  s.Table,
 		Fields: fields,
 	}
+	data.Relations, data.PivotSQL, data.PivotTable = relationBlueprint(s)
 
 	tmpl, err := template.New("migration").Parse(migrationTemplate)
 	if err != nil {
@@ -122,6 +137,44 @@ func fieldToBlueprintCall(f schema.Field) string {
 	}
 
 	return call
+}
+
+func relationBlueprint(s *schema.Schema) (rels []string, pivotSQL, pivotTable string) {
+	for _, r := range s.Relations {
+		switch strings.ToLower(r.Type) {
+		case "belongsto":
+			fk := r.FK
+			if fk == "" {
+				fk = support.Snake(r.Model) + "_id"
+			}
+			table := support.Plural(support.Snake(r.Model))
+			rels = append(rels,
+				fmt.Sprintf("b.BigInteger(%q)", fk),
+				fmt.Sprintf(`b.Foreign(%q).References("id").On(%q)`, fk, table),
+			)
+		case "belongstomany":
+			a, b := support.Snake(s.Model), support.Snake(r.Model)
+			if a > b {
+				a, b = b, a
+			}
+			pivot := r.Pivot
+			if pivot == "" {
+				pivot = a + "_" + b
+			}
+			fk := r.FK
+			if fk == "" {
+				fk = support.Snake(s.Model) + "_id"
+			}
+			relatedFK := r.RelatedFK
+			if relatedFK == "" {
+				relatedFK = support.Snake(r.Model) + "_id"
+			}
+			pivotTable = pivot
+			pivotSQL = fmt.Sprintf("pivot := migration.NewBlueprint(%q, drv)\n\t\t\tpivot.BigInteger(%q)\n\t\t\tpivot.BigInteger(%q)\n\t\t\tsql += \";\\n\" + pivot.ToCreateSQL()",
+				pivot, fk, relatedFK)
+		}
+	}
+	return
 }
 
 func migrationTimestamp() string {

@@ -54,6 +54,7 @@ type QueryBuilder struct {
 	softDelete  bool
 	onlyTrashed bool
 	modelType   reflect.Type
+	lock        string
 }
 
 type joinClause struct {
@@ -251,6 +252,12 @@ func (q *QueryBuilder) WithTrashed() *QueryBuilder {
 func (q *QueryBuilder) OnlyTrashed() *QueryBuilder {
 	q.softDelete = false
 	q.onlyTrashed = true
+	return q
+}
+
+// ForUpdate appends FOR UPDATE (MySQL / PostgreSQL) for pessimistic locking.
+func (q *QueryBuilder) ForUpdate() *QueryBuilder {
+	q.lock = "FOR UPDATE"
 	return q
 }
 
@@ -615,6 +622,11 @@ func (q *QueryBuilder) buildSelect() (string, []any) {
 	}
 	if q.offsetVal > 0 {
 		buf.WriteString(fmt.Sprintf(" OFFSET %d", q.offsetVal))
+	}
+
+	if q.lock != "" && (q.db.DriverName == "mysql" || q.db.DriverName == "postgres") {
+		buf.WriteString(" ")
+		buf.WriteString(q.lock)
 	}
 
 	return buf.String(), args

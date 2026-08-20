@@ -169,15 +169,20 @@ func (app *Application) Boot() *Application {
 // are available in github.com/Hlgxz/gai/middleware and must be added explicitly.
 func (app *Application) UseDefaults() *Application {
 	logging.Setup(logging.Config{
-		Level:  app.config.GetString("app.log.level", "info"),
-		Output: app.config.GetString("app.log.output", "stdout"),
-		Path:   app.config.GetString("app.log.path", "storage/logs/app.log"),
+		Level:      app.config.GetString("app.log.level", "info"),
+		Output:     app.config.GetString("app.log.output", "stdout"),
+		Path:       app.config.GetString("app.log.path", "storage/logs/app.log"),
+		MaxSize:    app.config.GetInt("app.log.max_size", 100),
+		MaxBackups: app.config.GetInt("app.log.max_backups", 3),
+		MaxAge:     app.config.GetInt("app.log.max_age", 28),
+		Compress:   app.config.GetBool("app.log.compress", false),
 	})
 	app.router.Use(
 		middleware.Recovery(),
 		middleware.RequestID(),
 		middleware.Logger(),
 		middleware.CORS(),
+		middleware.SecurityHeaders(),
 	)
 	return app
 }

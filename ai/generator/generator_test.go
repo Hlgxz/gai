@@ -83,3 +83,35 @@ func Register(app *gai.Application) {
 		t.Fatalf("routes.go not wired:\n%s", routes)
 	}
 }
+
+func TestGenerateMigrationRelations(t *testing.T) {
+	s := &schema.Schema{
+		Model: "Post",
+		Table: "posts",
+		Fields: []schema.Field{
+			{Name: "title", Type: "string"},
+		},
+		Relations: []schema.Relation{
+			{Type: "belongsTo", Model: "User"},
+			{Type: "belongsToMany", Model: "Tag"},
+		},
+	}
+	g := generator.NewGenerator(t.TempDir(), "example.com/demo")
+	src, err := g.GenerateMigration(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(src, `b.Foreign("user_id")`) {
+		t.Fatalf("missing FK:\n%s", src)
+	}
+	if !strings.Contains(src, "post_tag") && !strings.Contains(src, "tag_post") {
+		t.Fatalf("missing pivot:\n%s", src)
+	}
+	ctrl, err := g.GenerateController(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(ctrl, `orm.With(ctrl.DB, result.Items, "User")`) && !strings.Contains(ctrl, `orm.With`) {
+		t.Fatalf("missing With preload:\n%s", ctrl)
+	}
+}

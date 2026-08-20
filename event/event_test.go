@@ -10,8 +10,13 @@ func TestDispatch(t *testing.T) {
 	d := event.New()
 	var got string
 	d.Listen("user.created", func(p any) { got = p.(string) })
+	done := make(chan string, 1)
+	d.ListenAsync("user.created", func(p any) { done <- p.(string) })
 	d.Dispatch("user.created", "ada")
 	if got != "ada" {
 		t.Fatalf("got %q", got)
+	}
+	if <-done != "ada" {
+		t.Fatal("async")
 	}
 }

@@ -126,9 +126,57 @@ func makeJobCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := support.Camel(args[0])
+			if err := ensureJobsRegistry("app/jobs"); err != nil {
+				return err
+			}
 			return writeTemplate("app/jobs", support.Snake(name)+".go", jobStub(name))
 		},
 	}
+}
+
+func ensureJobsRegistry(dir string) error {
+	path := filepath.Join(dir, "register.go")
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	content := `package jobs
+
+import "github.com/Hlgxz/gai/queue"
+
+// Handlers maps job names to handlers. gai make job registers via init().
+var Handlers = map[string]queue.Handler{}
+
+// Register attaches all Handlers to the queue manager.
+func Register(m *queue.Manager) {
+	for name, h := range Handlers {
+		m.Register(name, h)
+	}
+}
+`
+	return os.WriteFile(path, []byte(content), 0o644)
+}
+
+func jobStub(name string) string {
+	return fmt.Sprintf(`package jobs
+
+import (
+	"context"
+)
+
+const %sJob = "%s"
+
+func init() {
+	Handlers[%sJob] = Handle%s
+}
+
+// Handle%s processes a queued %s job.
+func Handle%s(ctx context.Context, payload []byte) error {
+	return nil
+}
+`, name, support.Snake(name), name, name, name, name, name)
 }
 
 func seederStub(name string) string {
@@ -148,22 +196,6 @@ func %s(db *orm.DB) error {
 	return nil
 }
 `, name, name, name)
-}
-
-func jobStub(name string) string {
-	return fmt.Sprintf(`package jobs
-
-import (
-	"context"
-)
-
-const %sJob = "%s"
-
-// Handle%s processes a queued %s job.
-func Handle%s(ctx context.Context, payload []byte) error {
-	return nil
-}
-`, name, support.Snake(name), name, name, name)
 }
 
 func writeTemplate(dir, filename, content string) error {

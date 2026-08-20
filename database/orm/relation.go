@@ -11,25 +11,104 @@ import (
 )
 
 // With eagerly loads a named relation on the given slice of models.
-// It performs a separate query (N+1 avoided via batch loading).
-//
-// Usage:
-//
-//	users, _ := Get[User](qb)
-//	orm.With(db, users, "Posts")
+// Nested paths like "Posts.Comments" are supported.
 func With[T any](db *DB, models []T, relation string, ctxs ...context.Context) error {
 	ctx := context.Background()
 	if len(ctxs) > 0 {
 		ctx = ctxs[0]
 	}
+	parts := strings.Split(relation, ".")
+	return withPath(db, ctx, models, parts)
+}
 
+func withPath[T any](db *DB, ctx context.Context, models []T, parts []string) error {
+	if len(models) == 0 || len(parts) == 0 {
+		return nil
+	}
+	if err := eagerLoad[T](db, ctx, models, parts[0]); err != nil {
+		return err
+	}
+	if len(parts) == 1 {
+		return nil
+	}
+	children := childPointers(models, parts[0])
+	return withPath[any](db, ctx, children, parts[1:])
+}
+
+func childPointers[T any](models []T, field string) []any {
+	var out []any
+	for i := range models {
+		v := derefModel(&models[i])
+		fv := v.FieldByName(field)
+		if !fv.IsValid() {
+			continue
+		}
+		switch fv.Kind() {
+		case reflect.Slice:
+			for j := 0; j < fv.Len(); j++ {
+				el := fv.Index(j)
+				if el.Kind() == reflect.Struct && el.CanAddr() {
+					out = append(out, el.Addr().Interface())
+				} else if el.Kind() == reflect.Ptr && !el.IsNil() {
+					out = append(out, el.Interface())
+				}
+			}
+		case reflect.Ptr:
+			if !fv.IsNil() {
+				out = append(out, fv.Interface())
+			}
+		case reflect.Struct:
+			if fv.CanAddr() {
+				out = append(out, fv.Addr().Interface())
+			}
+		}
+	}
+	return out
+}
+
+func derefModel(ptr any) reflect.Value {
+	v := reflect.ValueOf(ptr)
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	if v.Kind() == reflect.Interface {
+		v = v.Elem()
+	}
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	return v
+}
+
+func modelElem[T any](models []T, i int) reflect.Value {
+	v := reflect.ValueOf(&models[i]).Elem()
+	if v.Kind() == reflect.Interface {
+		v = v.Elem()
+	}
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	return v
+}
+
+func parentNameOf[T any](models []T) string {
+	if len(models) == 0 {
+		return ""
+	}
+	t := reflect.TypeOf(models[0])
+	for t.Kind() == reflect.Ptr || t.Kind() == reflect.Interface {
+		t = t.Elem()
+	}
+	return t.Name()
+}
+
+func eagerLoad[T any](db *DB, ctx context.Context, models []T, relation string) error {
 	if len(models) == 0 {
 		return nil
 	}
 
-	var zero T
-	t := reflect.TypeOf(zero)
-	if t.Kind() == reflect.Ptr {
+	t := reflect.TypeOf(models[0])
+	for t.Kind() == reflect.Ptr || t.Kind() == reflect.Interface {
 		t = t.Elem()
 	}
 
@@ -66,22 +145,16 @@ type relationMeta struct {
 }
 
 func loadHasMany[T any](db *DB, ctx context.Context, models []T, relation string, field reflect.StructField, meta relationMeta) error {
-	var zero T
-
 	ids := make([]any, len(models))
-	for i, m := range models {
-		v := reflect.ValueOf(m)
-		if v.Kind() == reflect.Ptr {
-			v = v.Elem()
-		}
-		ids[i] = fieldValue(v, "ID")
+	for i := range models {
+		ids[i] = fieldValue(modelElem(models, i), "ID")
 	}
 
 	childType := field.Type.Elem()
 	childTable := strings.ToLower(support.Plural(support.Snake(childType.Name())))
 	fk := meta.fk
 	if fk == "" {
-		fk = support.Snake(reflect.TypeOf(zero).Name()) + "_id"
+		fk = support.Snake(parentNameOf(models)) + "_id"
 	}
 
 	placeholders := make([]string, len(ids))
@@ -110,10 +183,7 @@ func loadHasMany[T any](db *DB, ctx context.Context, models []T, relation string
 	}
 
 	for i := range models {
-		v := reflect.ValueOf(&models[i]).Elem()
-		if v.Kind() == reflect.Ptr {
-			v = v.Elem()
-		}
+		v := modelElem(models, i)
 		parentID := fieldValue(v, "ID")
 		children := grouped[parentID]
 		sliceVal := reflect.MakeSlice(field.Type, len(children), len(children))
@@ -127,15 +197,9 @@ func loadHasMany[T any](db *DB, ctx context.Context, models []T, relation string
 }
 
 func loadHasOne[T any](db *DB, ctx context.Context, models []T, relation string, field reflect.StructField, meta relationMeta) error {
-	var zero T
-
 	ids := make([]any, len(models))
-	for i, m := range models {
-		v := reflect.ValueOf(m)
-		if v.Kind() == reflect.Ptr {
-			v = v.Elem()
-		}
-		ids[i] = fieldValue(v, "ID")
+	for i := range models {
+		ids[i] = fieldValue(modelElem(models, i), "ID")
 	}
 
 	relType := field.Type
@@ -147,7 +211,7 @@ func loadHasOne[T any](db *DB, ctx context.Context, models []T, relation string,
 	childTable := strings.ToLower(support.Plural(support.Snake(relType.Name())))
 	fk := meta.fk
 	if fk == "" {
-		fk = support.Snake(reflect.TypeOf(zero).Name()) + "_id"
+		fk = support.Snake(parentNameOf(models)) + "_id"
 	}
 
 	placeholders := make([]string, len(ids))
@@ -176,10 +240,7 @@ func loadHasOne[T any](db *DB, ctx context.Context, models []T, relation string,
 	}
 
 	for i := range models {
-		v := reflect.ValueOf(&models[i]).Elem()
-		if v.Kind() == reflect.Ptr {
-			v = v.Elem()
-		}
+		v := modelElem(models, i)
 		parentID := fieldValue(v, "ID")
 		rel, ok := byFK[parentID]
 		if !ok {
@@ -211,11 +272,8 @@ func loadBelongsTo[T any](db *DB, ctx context.Context, models []T, relation stri
 	relTable := strings.ToLower(support.Plural(support.Snake(relType.Name())))
 
 	ids := make([]any, 0, len(models))
-	for _, m := range models {
-		v := reflect.ValueOf(m)
-		if v.Kind() == reflect.Ptr {
-			v = v.Elem()
-		}
+	for i := range models {
+		v := modelElem(models, i)
 		id := fieldValue(v, support.Camel(fk))
 		if id != nil {
 			ids = append(ids, id)
@@ -252,7 +310,7 @@ func loadBelongsTo[T any](db *DB, ctx context.Context, models []T, relation stri
 	}
 
 	for i := range models {
-		v := reflect.ValueOf(&models[i]).Elem()
+		v := modelElem(models, i)
 		fkVal := fieldValue(v, support.Camel(fk))
 		if rel, ok := byID[fkVal]; ok {
 			fld := v.FieldByName(relation)
@@ -270,11 +328,7 @@ func loadBelongsTo[T any](db *DB, ctx context.Context, models []T, relation stri
 }
 
 func loadBelongsToMany[T any](db *DB, ctx context.Context, models []T, relation string, field reflect.StructField, meta relationMeta) error {
-	var zero T
-	parentName := reflect.TypeOf(zero).Name()
-	if reflect.TypeOf(zero).Kind() == reflect.Ptr {
-		parentName = reflect.TypeOf(zero).Elem().Name()
-	}
+	parentName := parentNameOf(models)
 
 	childType := field.Type.Elem()
 	childName := childType.Name()
@@ -298,12 +352,8 @@ func loadBelongsToMany[T any](db *DB, ctx context.Context, models []T, relation 
 	}
 
 	ids := make([]any, len(models))
-	for i, m := range models {
-		v := reflect.ValueOf(m)
-		if v.Kind() == reflect.Ptr {
-			v = v.Elem()
-		}
-		ids[i] = fieldValue(v, "ID")
+	for i := range models {
+		ids[i] = fieldValue(modelElem(models, i), "ID")
 	}
 
 	placeholders := make([]string, len(ids))
@@ -377,10 +427,7 @@ func loadBelongsToMany[T any](db *DB, ctx context.Context, models []T, relation 
 	}
 
 	for i := range models {
-		v := reflect.ValueOf(&models[i]).Elem()
-		if v.Kind() == reflect.Ptr {
-			v = v.Elem()
-		}
+		v := modelElem(models, i)
 		parentID := fieldValue(v, "ID")
 		children := grouped[parentID]
 		sliceVal := reflect.MakeSlice(field.Type, len(children), len(children))

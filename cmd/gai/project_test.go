@@ -46,6 +46,16 @@ func TestCreateProjectVersions(t *testing.T) {
 	if !strings.Contains(string(yaml), "log:") {
 		t.Fatalf("missing log config: %s", yaml)
 	}
+	if !strings.Contains(string(yaml), "cache:") {
+		t.Fatalf("missing cache config: %s", yaml)
+	}
+	mainSrc, err := os.ReadFile(filepath.Join("demo", "main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(mainSrc), "UseServices") {
+		t.Fatalf("main should call UseServices:\n%s", mainSrc)
+	}
 }
 
 func TestFormatGoSource(t *testing.T) {

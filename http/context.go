@@ -267,6 +267,14 @@ func (c *Context) Status(code int) *Context {
 	return c
 }
 
+// StatusCode returns the status that will be (or was) written.
+func (c *Context) StatusCode() int {
+	if c.status == 0 {
+		return http.StatusOK
+	}
+	return c.status
+}
+
 // SetHeader sets a response header.
 func (c *Context) SetHeader(key, value string) *Context {
 	c.Writer.Header().Set(key, value)

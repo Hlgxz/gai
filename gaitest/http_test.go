@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"testing"
 
-	ghttp "github.com/Hlgxz/gai/http"
 	"github.com/Hlgxz/gai/gaitest"
+	ghttp "github.com/Hlgxz/gai/http"
 	"github.com/Hlgxz/gai/mail"
 	"github.com/Hlgxz/gai/router"
 )

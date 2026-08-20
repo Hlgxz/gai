@@ -26,4 +26,24 @@ func TestMemoryCache(t *testing.T) {
 	if _, err := m.Get(ctx, "k"); err != cache.ErrMiss {
 		t.Fatalf("want miss got %v", err)
 	}
+	var ran bool
+	if err := m.Once(ctx, "once", time.Second, func() error {
+		ran = true
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !ran {
+		t.Fatal("once should run")
+	}
+	ran = false
+	if err := m.Once(ctx, "once", time.Second, func() error {
+		ran = true
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if ran {
+		t.Fatal("once should skip")
+	}
 }

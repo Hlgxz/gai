@@ -1,11 +1,11 @@
 package alipay
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -14,6 +14,7 @@ type Config struct {
 	AppID      string
 	PrivateKey string
 	PublicKey  string
+	Gateway    string // optional; default https://openapi.alipay.com/gateway.do
 }
 
 // Client is the Alipay Mini Program SDK client.
@@ -37,8 +38,32 @@ func (c *Client) Auth() *AuthClient {
 	return &AuthClient{client: c}
 }
 
-func (c *Client) doGet(url string, result any) error {
-	resp, err := c.httpClient.Get(url)
+func (c *Client) gateway() string {
+	if c.config.Gateway != "" {
+		return c.config.Gateway
+	}
+	return "https://openapi.alipay.com/gateway.do"
+}
+
+func (c *Client) doSigned(method string, biz map[string]string, result any) error {
+	params := map[string]string{
+		"app_id":    c.config.AppID,
+		"method":    method,
+		"charset":   "utf-8",
+		"sign_type": "RSA2",
+		"timestamp": time.Now().Format("2006-01-02 15:04:05"),
+		"version":   "1.0",
+	}
+	for k, v := range biz {
+		params[k] = v
+	}
+	sign, err := c.signParams(params)
+	if err != nil {
+		return err
+	}
+	params["sign"] = sign
+
+	resp, err := c.httpClient.Post(c.gateway(), "application/x-www-form-urlencoded", strings.NewReader(formValues(params).Encode()))
 	if err != nil {
 		return err
 	}
@@ -47,46 +72,61 @@ func (c *Client) doGet(url string, result any) error {
 	if err != nil {
 		return fmt.Errorf("alipay: failed to read response body: %w", err)
 	}
-	return json.Unmarshal(body, result)
-}
-
-func (c *Client) doPostJSON(url string, payload any, result any) error {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-
-	resp, err := c.httpClient.Post(url, "application/json", bytes.NewReader(data))
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("alipay: failed to read response body: %w", err)
+	if c.config.PublicKey != "" {
+		if err := verifyResponseSign(c.config.PublicKey, body); err != nil {
+			return fmt.Errorf("alipay: verify sign: %w", err)
+		}
 	}
 	return json.Unmarshal(body, result)
 }
 
-// SystemOauthToken exchanges an auth_code for access token.
+func verifyResponseSign(publicKey string, body []byte) error {
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return err
+	}
+	signRaw, ok := envelope["sign"]
+	if !ok {
+		return nil
+	}
+	var sign string
+	if err := json.Unmarshal(signRaw, &sign); err != nil || sign == "" {
+		return nil
+	}
+	var content json.RawMessage
+	for k, v := range envelope {
+		if k == "sign" || k == "sign_type" {
+			continue
+		}
+		content = v
+		break
+	}
+	if len(content) == 0 {
+		return nil
+	}
+	return verifyAlipaySign(publicKey, string(content), sign)
+}
+
+// SystemOauthToken exchanges an auth_code for access token using RSA2-signed POST.
 func (c *Client) SystemOauthToken(authCode string) (*OAuthToken, error) {
-	url := fmt.Sprintf(
-		"https://openapi.alipay.com/gateway.do?method=alipay.system.oauth.token&app_id=%s&grant_type=authorization_code&code=%s",
-		c.config.AppID, authCode,
-	)
-
 	var result struct {
 		Response OAuthToken `json:"alipay_system_oauth_token_response"`
 		ErrResp  struct {
-			Code string `json:"code"`
-			Msg  string `json:"msg"`
+			Code    string `json:"code"`
+			Msg     string `json:"msg"`
+			SubCode string `json:"sub_code"`
+			SubMsg  string `json:"sub_msg"`
 		} `json:"error_response"`
 	}
 
-	if err := c.doGet(url, &result); err != nil {
+	err := c.doSigned("alipay.system.oauth.token", map[string]string{
+		"grant_type": "authorization_code",
+		"code":       authCode,
+	}, &result)
+	if err != nil {
 		return nil, fmt.Errorf("alipay: oauth token request failed: %w", err)
 	}
-	if result.ErrResp.Code != "" {
+	if result.ErrResp.Code != "" && result.ErrResp.Code != "10000" {
 		return nil, fmt.Errorf("alipay: oauth error %s: %s", result.ErrResp.Code, result.ErrResp.Msg)
 	}
 
@@ -100,4 +140,6 @@ type OAuthToken struct {
 	UserID       string `json:"user_id"`
 	ExpiresIn    int    `json:"expires_in"`
 	RefreshToken string `json:"refresh_token"`
+	Code         string `json:"code"`
+	Msg          string `json:"msg"`
 }

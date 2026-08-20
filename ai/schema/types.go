@@ -32,9 +32,11 @@ type APIConfig struct {
 
 // Relation describes a model relationship.
 type Relation struct {
-	Type  string `yaml:"type"`  // hasMany, hasOne, belongsTo
-	Model string `yaml:"model"` // related model name
-	FK    string `yaml:"fk,omitempty"`
+	Type      string `yaml:"type"`  // hasMany, hasOne, belongsTo, belongsToMany
+	Model     string `yaml:"model"` // related model name
+	FK        string `yaml:"fk,omitempty"`
+	Pivot     string `yaml:"pivot,omitempty"`
+	RelatedFK string `yaml:"related_fk,omitempty"`
 }
 
 // GoType maps a Gai schema type to a Go type string.

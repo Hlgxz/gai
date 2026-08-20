@@ -11,8 +11,8 @@ import (
 )
 
 type shutdownProvider struct {
-	booted     bool
-	shutdown   bool
+	booted   bool
+	shutdown bool
 }
 
 func (p *shutdownProvider) Register(app *gai.Application) {}
@@ -66,5 +66,21 @@ func TestLivenessAndMetrics(t *testing.T) {
 	app.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	if rec.Code != 200 {
 		t.Fatalf("metrics: %d", rec.Code)
+	}
+}
+
+func TestUseServices(t *testing.T) {
+	app := gai.New()
+	app.UseServices()
+	if !app.Has("cache") || !app.Has("queue") || !app.Has("mail") || !app.Has("storage") || !app.Has("session") {
+		t.Fatalf("missing bindings cache=%v queue=%v mail=%v storage=%v session=%v",
+			app.Has("cache"), app.Has("queue"), app.Has("mail"), app.Has("storage"), app.Has("session"))
+	}
+	rec := httptest.NewRecorder()
+	app.UseDefaults()
+	app.Router().Get("/hdr", func(c *ghttp.Context) { c.String(200, "ok") })
+	app.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/hdr", nil))
+	if rec.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("security headers missing: %v", rec.Header())
 	}
 }

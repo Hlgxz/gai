@@ -43,6 +43,9 @@ func (ctrl *{{ .Model }}Controller) Index(c *ghttp.Context) {
 		c.Error(http.StatusInternalServerError, err.Error())
 		return
 	}
+	{{- range .Preloads }}
+	_ = orm.With(ctrl.DB, result.Items, "{{ . }}")
+	{{- end }}
 	c.Success(result)
 }
 {{- end }}
@@ -62,6 +65,13 @@ func (ctrl *{{ .Model }}Controller) Show(c *ghttp.Context) {
 		c.Error(http.StatusNotFound, "{{ .Model }} not found")
 		return
 	}
+	{{- if .Preloads }}
+	items := []models.{{ .Model }}{*item}
+	{{- range .Preloads }}
+	_ = orm.With(ctrl.DB, items, "{{ . }}")
+	{{- end }}
+	item = &items[0]
+	{{- end }}
 	c.Success(item)
 }
 {{- end }}
@@ -203,6 +213,7 @@ type controllerData struct {
 	Fields          []controllerField
 	ValidationRules []validationRule
 	NeedsDB         bool
+	Preloads        []string
 }
 
 type controllerField struct {
@@ -276,6 +287,7 @@ func (g *Generator) GenerateController(s *schema.Schema) (string, error) {
 		Fields:          fields,
 		ValidationRules: rules,
 		NeedsDB:         needsDB,
+		Preloads:        relationPreloads(s),
 	}
 
 	funcMap := template.FuncMap{
@@ -292,4 +304,17 @@ func (g *Generator) GenerateController(s *schema.Schema) (string, error) {
 		return "", err
 	}
 	return buf.String(), nil
+}
+
+func relationPreloads(s *schema.Schema) []string {
+	var out []string
+	for _, r := range s.Relations {
+		name := r.Model
+		switch strings.ToLower(r.Type) {
+		case "hasmany", "belongstomany":
+			name = pluralize(r.Model)
+		}
+		out = append(out, name)
+	}
+	return out
 }

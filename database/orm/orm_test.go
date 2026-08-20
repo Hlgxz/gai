@@ -16,6 +16,27 @@ type User struct {
 	Age   int
 }
 
+type Comment struct {
+	orm.Model
+	PostId uint64 `gai:"column:post_id"`
+	Body   string `gai:"column:body"`
+}
+
+type Post struct {
+	orm.Model
+	UserId   uint64    `gai:"column:user_id"`
+	Title    string    `gai:"column:title"`
+	Comments []Comment `gai:"hasMany;fk:post_id"`
+}
+
+type UserWithPosts struct {
+	orm.Model
+	Name  string
+	Posts []Post `gai:"hasMany;fk:user_id"`
+}
+
+func (UserWithPosts) TableName() string { return "users" }
+
 func openTestDB(t *testing.T) *orm.DB {
 	t.Helper()
 	db, err := database.Open(database.Config{Driver: "sqlite", DSN: ":memory:"})
@@ -122,6 +143,57 @@ func TestAggregates(t *testing.T) {
 	ok, _ := orm.Exists(orm.Query[User](db).Where("name", "=", "a"))
 	if !ok {
 		t.Fatal("exists")
+	}
+}
+
+func TestUpdateAllAndNestedWith(t *testing.T) {
+	db := openTestDB(t)
+	_, _ = db.Exec(context.Background(), `CREATE TABLE posts (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id INTEGER, title TEXT,
+		created_at TEXT, updated_at TEXT, deleted_at TEXT
+	)`)
+	_, _ = db.Exec(context.Background(), `CREATE TABLE comments (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		post_id INTEGER, body TEXT,
+		created_at TEXT, updated_at TEXT, deleted_at TEXT
+	)`)
+
+	u, err := orm.Create[User](db, &User{Name: "Eve", Email: "e@t.com", Age: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := orm.Query[User](db).Where("id", "=", u.ID).UpdateAll(map[string]any{"age": 42})
+	if err != nil || n != 1 {
+		t.Fatalf("update all n=%d err=%v", n, err)
+	}
+	sql, _ := orm.Query[User](db).ForUpdate().ToSQL()
+	if sql == "" {
+		t.Fatal("for update sql")
+	}
+
+	_, err = db.Exec(context.Background(), `INSERT INTO posts (user_id, title, created_at, updated_at) VALUES (?,?,datetime('now'),datetime('now'))`, u.ID, "P1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	posts, err := orm.Get[Post](orm.Query[Post](db).Where("user_id", "=", u.ID))
+	if err != nil || len(posts) != 1 {
+		t.Fatalf("posts %+v %v", posts, err)
+	}
+	_, err = db.Exec(context.Background(), `INSERT INTO comments (post_id, body, created_at, updated_at) VALUES (?,?,datetime('now'),datetime('now'))`, posts[0].ID, "hi")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	users, err := orm.Get[UserWithPosts](orm.Query[UserWithPosts](db).Where("id", "=", u.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := orm.With(db, users, "Posts.Comments"); err != nil {
+		t.Fatal(err)
+	}
+	if len(users) != 1 || len(users[0].Posts) != 1 || len(users[0].Posts[0].Comments) != 1 {
+		t.Fatalf("nested: %+v", users)
 	}
 }
 

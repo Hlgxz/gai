@@ -289,3 +289,98 @@ func (q *QueryBuilder) adjust(column string, amount int) error {
 func (q *QueryBuilder) ToSQL() (string, []any) {
 	return q.buildSelect()
 }
+
+func (q *QueryBuilder) effectiveWheres() []whereClause {
+	effective := q.wheres
+	if q.softDelete {
+		effective = append([]whereClause{{raw: "deleted_at IS NULL", boolean: "AND"}}, effective...)
+	} else if q.onlyTrashed {
+		effective = append([]whereClause{{raw: "deleted_at IS NOT NULL", boolean: "AND"}}, effective...)
+	}
+	return effective
+}
+
+func (q *QueryBuilder) appendWhere(query string, args []any, idx int) (string, []any) {
+	effective := q.effectiveWheres()
+	if len(effective) == 0 {
+		return query, args
+	}
+	query += " WHERE "
+	var buf strings.Builder
+	for i, w := range effective {
+		if i > 0 {
+			buf.WriteString(" " + w.boolean + " ")
+		}
+		if w.raw != "" {
+			buf.WriteString(w.raw)
+			args = append(args, w.rawArgs...)
+			idx += len(w.rawArgs)
+			continue
+		}
+		if w.operator == "IN" {
+			vals, ok := w.value.([]any)
+			if !ok {
+				continue
+			}
+			phs := make([]string, len(vals))
+			for j, v := range vals {
+				phs[j] = placeholder(q.db.DriverName, idx)
+				args = append(args, v)
+				idx++
+			}
+			buf.WriteString(fmt.Sprintf("%s IN (%s)", w.column, strings.Join(phs, ", ")))
+			continue
+		}
+		buf.WriteString(fmt.Sprintf("%s %s %s", w.column, w.operator, placeholder(q.db.DriverName, idx)))
+		args = append(args, w.value)
+		idx++
+	}
+	return query + buf.String(), args
+}
+
+// UpdateAll sets columns for every row matching the current query.
+func (q *QueryBuilder) UpdateAll(values map[string]any) (int64, error) {
+	if len(values) == 0 {
+		return 0, nil
+	}
+	var sets []string
+	var args []any
+	idx := 1
+	for col, val := range values {
+		sets = append(sets, fmt.Sprintf("%s = %s", q.db.quote(safeColumn(col)), placeholder(q.db.DriverName, idx)))
+		args = append(args, val)
+		idx++
+	}
+	query := fmt.Sprintf("UPDATE %s SET %s", q.db.quote(q.table), strings.Join(sets, ", "))
+	query, args = q.appendWhere(query, args, idx)
+	res, err := q.db.execContext(q.ctx, query, args...)
+	if err != nil {
+		return 0, fmt.Errorf("gai/orm: update failed: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
+// DeleteAll deletes (or soft-deletes) every row matching the current query.
+func (q *QueryBuilder) DeleteAll() (int64, error) {
+	if q.softDelete {
+		query := fmt.Sprintf("UPDATE %s SET %s = %s",
+			q.db.quote(q.table), q.db.quote("deleted_at"), placeholder(q.db.DriverName, 1))
+		args := []any{time.Now()}
+		query, args = q.appendWhere(query, args, 2)
+		res, err := q.db.execContext(q.ctx, query, args...)
+		if err != nil {
+			return 0, fmt.Errorf("gai/orm: delete failed: %w", err)
+		}
+		n, _ := res.RowsAffected()
+		return n, nil
+	}
+	query := fmt.Sprintf("DELETE FROM %s", q.db.quote(q.table))
+	query, args := q.appendWhere(query, nil, 1)
+	res, err := q.db.execContext(q.ctx, query, args...)
+	if err != nil {
+		return 0, fmt.Errorf("gai/orm: delete failed: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}

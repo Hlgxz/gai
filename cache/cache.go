@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 	"time"
+
+	"github.com/Hlgxz/gai/lock"
 )
 
 // ErrMiss is returned when a key is not present.
@@ -22,6 +25,9 @@ type Store interface {
 type Manager struct {
 	Store  Store
 	Prefix string
+	Locker lock.Locker
+
+	onceMu sync.Mutex
 }
 
 func (m *Manager) key(k string) string {
@@ -82,4 +88,48 @@ func RememberJSON[T any](m *Manager, ctx context.Context, key string, ttl time.D
 		return val, err
 	}
 	return val, nil
+}
+
+func (m *Manager) locker() lock.Locker {
+	if m.Locker != nil {
+		return m.Locker
+	}
+	m.onceMu.Lock()
+	defer m.onceMu.Unlock()
+	if m.Locker == nil {
+		m.Locker = lock.NewMemory()
+	}
+	return m.Locker
+}
+
+// Lock acquires a named lock (process-local by default, or Redis when Locker is set).
+func (m *Manager) Lock(ctx context.Context, key string, ttl time.Duration) (func(), error) {
+	return m.locker().Acquire(ctx, m.key(key), ttl)
+}
+
+// Once runs fn only if key is absent, then stores a marker for ttl.
+func (m *Manager) Once(ctx context.Context, key string, ttl time.Duration, fn func() error) error {
+	ok, err := m.Has(ctx, key)
+	if err != nil {
+		return err
+	}
+	if ok {
+		return nil
+	}
+	rel, err := m.Lock(ctx, "once:"+key, ttl)
+	if err != nil {
+		if errors.Is(err, lock.ErrNotAcquired) {
+			return nil
+		}
+		return err
+	}
+	defer rel()
+	ok, err = m.Has(ctx, key)
+	if err != nil || ok {
+		return err
+	}
+	if err := fn(); err != nil {
+		return err
+	}
+	return m.Set(ctx, key, []byte("1"), ttl)
 }

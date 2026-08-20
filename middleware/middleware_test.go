@@ -57,3 +57,17 @@ func TestCORSPreflight(t *testing.T) {
 		t.Fatalf("missing CORS header: %+v", rec.Header())
 	}
 }
+
+func TestSecurityHeaders(t *testing.T) {
+	r := router.New()
+	r.Use(middleware.SecurityHeaders())
+	r.Get("/x", func(c *ghttp.Context) { c.String(200, "ok") })
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
+	if rec.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("headers: %v", rec.Header())
+	}
+	if rec.Header().Get("X-Frame-Options") != "DENY" {
+		t.Fatalf("frame: %s", rec.Header().Get("X-Frame-Options"))
+	}
+}

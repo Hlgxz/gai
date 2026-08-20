@@ -108,6 +108,13 @@ func (g *Generator) GenerateModel(s *schema.Schema) (string, error) {
 			rel.Name = pluralize(r.Model)
 			rel.JSONName = toSnake(pluralize(r.Model))
 			rel.GoType = "[]" + r.Model
+		case "belongsToMany":
+			rel.Name = pluralize(r.Model)
+			rel.JSONName = toSnake(pluralize(r.Model))
+			rel.GoType = "[]" + r.Model
+			if r.Pivot != "" {
+				rel.RelType = r.Type + ";pivot:" + r.Pivot
+			}
 		case "hasOne", "belongsTo":
 			rel.GoType = "*" + r.Model
 		}

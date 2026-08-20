@@ -126,6 +126,7 @@ func main() {
 	app := gai.New()
 	app.LoadConfig("config")
 	app.UseDefaults()
+	app.UseServices()
 
 	if _, err := app.OpenDB(); err != nil {
 		log.Printf("database: %%v (continuing without DB)", err)
@@ -164,6 +165,9 @@ DB_DATABASE=storage/database.db
 JWT_SECRET=change-me-to-a-random-string
 JWT_TTL=7200
 
+# REDIS_ADDR=127.0.0.1:6379
+# REDIS_PASSWORD=
+
 # WECHAT_APP_ID=
 # WECHAT_APP_SECRET=
 `, port)
@@ -179,12 +183,63 @@ log:
   level: ${LOG_LEVEL:info}
   output: ${LOG_OUTPUT:stdout}
   path: ${LOG_PATH:storage/logs/app.log}
+  max_size: 100
+  max_backups: 3
+  max_age: 28
 
 database:
   driver: ${DB_DRIVER:sqlite}
   dsn: ${DB_DATABASE:storage/database.db}
   max_open_conns: 25
   max_idle_conns: 5
+
+redis:
+  addr: ${REDIS_ADDR:}
+  password: ${REDIS_PASSWORD:}
+  db: 0
+
+cache:
+  driver: ${CACHE_DRIVER:memory}
+  prefix: gai:
+
+session:
+  driver: ${SESSION_DRIVER:memory}
+  cookie: gai_session
+  ttl: 86400
+  secure: false
+
+queue:
+  driver: ${QUEUE_DRIVER:memory}
+  key: gai:queue
+  retry: 3
+  timeout: 60
+  concurrency: 1
+
+mail:
+  driver: ${MAIL_DRIVER:log}
+  host: ${MAIL_HOST:localhost}
+  port: ${MAIL_PORT:587}
+  username: ${MAIL_USERNAME:}
+  password: ${MAIL_PASSWORD:}
+  from: ${MAIL_FROM:}
+  tls: true
+
+storage:
+  default: local
+  local:
+    root: storage/app
+    url: /storage
+  s3:
+    endpoint: ${S3_ENDPOINT:}
+    region: ${S3_REGION:us-east-1}
+    bucket: ${S3_BUCKET:}
+    access_key: ${S3_ACCESS_KEY:}
+    secret_key: ${S3_SECRET_KEY:}
+    path_style: true
+
+tracing:
+  enabled: false
+  endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:}
 
 auth:
   default: jwt

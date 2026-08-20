@@ -24,6 +24,8 @@ func main() {
 		generateCmd(),
 		migrateCmd(),
 		seedCmd(),
+		queueWorkCmd(),
+		scheduleRunCmd(),
 	)
 
 	if err := root.Execute(); err != nil {

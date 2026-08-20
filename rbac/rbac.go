@@ -1,27 +1,163 @@
 package rbac
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
 	"sync"
 
 	ghttp "github.com/Hlgxz/gai/http"
+	"github.com/redis/go-redis/v9"
 )
 
-// Manager is an in-memory RBAC enforcer. Persist assignments yourself
-// (or wrap this with a database-backed store).
-type Manager struct {
+// Store persists role assignments and permissions.
+type Store interface {
+	AssignRole(userID, role string) error
+	RevokeRole(userID, role string) error
+	Grant(role, permission string) error
+	Deny(role, permission string) error
+	HasRole(userID, role string) bool
+	Can(userID, permission string) bool
+}
+
+// MemoryStore is the default in-process store.
+type MemoryStore struct {
 	mu        sync.RWMutex
 	userRoles map[string]map[string]struct{}
 	rolePerms map[string]map[string]struct{}
 }
 
-func New() *Manager {
-	return &Manager{
+func NewMemoryStore() *MemoryStore {
+	return &MemoryStore{
 		userRoles: make(map[string]map[string]struct{}),
 		rolePerms: make(map[string]map[string]struct{}),
 	}
+}
+
+func (s *MemoryStore) AssignRole(userID, role string) error {
+	s.mu.Lock()
+	if s.userRoles[userID] == nil {
+		s.userRoles[userID] = make(map[string]struct{})
+	}
+	s.userRoles[userID][role] = struct{}{}
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *MemoryStore) RevokeRole(userID, role string) error {
+	s.mu.Lock()
+	delete(s.userRoles[userID], role)
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *MemoryStore) Grant(role, permission string) error {
+	s.mu.Lock()
+	if s.rolePerms[role] == nil {
+		s.rolePerms[role] = make(map[string]struct{})
+	}
+	s.rolePerms[role][permission] = struct{}{}
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *MemoryStore) Deny(role, permission string) error {
+	s.mu.Lock()
+	delete(s.rolePerms[role], permission)
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *MemoryStore) HasRole(userID, role string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, ok := s.userRoles[userID][role]
+	return ok
+}
+
+func (s *MemoryStore) Can(userID, permission string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for role := range s.userRoles[userID] {
+		if _, ok := s.rolePerms[role][permission]; ok {
+			return true
+		}
+		if _, ok := s.rolePerms[role]["*"]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// RedisStore persists RBAC in Redis sets.
+type RedisStore struct {
+	client redis.Cmdable
+	prefix string
+}
+
+func NewRedisStore(client redis.Cmdable) *RedisStore {
+	return &RedisStore{client: client, prefix: "gai:rbac:"}
+}
+
+func (s *RedisStore) userKey(id string) string   { return s.prefix + "user:" + id }
+func (s *RedisStore) roleKey(role string) string { return s.prefix + "role:" + role }
+
+func ctxBG() context.Context { return context.Background() }
+
+func (s *RedisStore) AssignRole(userID, role string) error {
+	return s.client.SAdd(ctxBG(), s.userKey(userID), role).Err()
+}
+
+func (s *RedisStore) RevokeRole(userID, role string) error {
+	return s.client.SRem(ctxBG(), s.userKey(userID), role).Err()
+}
+
+func (s *RedisStore) Grant(role, permission string) error {
+	return s.client.SAdd(ctxBG(), s.roleKey(role), permission).Err()
+}
+
+func (s *RedisStore) Deny(role, permission string) error {
+	return s.client.SRem(ctxBG(), s.roleKey(role), permission).Err()
+}
+
+func (s *RedisStore) HasRole(userID, role string) bool {
+	ok, _ := s.client.SIsMember(ctxBG(), s.userKey(userID), role).Result()
+	return ok
+}
+
+func (s *RedisStore) Can(userID, permission string) bool {
+	roles, err := s.client.SMembers(ctxBG(), s.userKey(userID)).Result()
+	if err != nil {
+		return false
+	}
+	for _, role := range roles {
+		ok, _ := s.client.SIsMember(ctxBG(), s.roleKey(role), permission).Result()
+		if ok {
+			return true
+		}
+		star, _ := s.client.SIsMember(ctxBG(), s.roleKey(role), "*").Result()
+		if star {
+			return true
+		}
+	}
+	return false
+}
+
+// Manager is an RBAC enforcer backed by a Store.
+type Manager struct {
+	store Store
+}
+
+func New() *Manager {
+	return NewWithStore(NewMemoryStore())
+}
+
+func NewWithStore(store Store) *Manager {
+	if store == nil {
+		store = NewMemoryStore()
+	}
+	return &Manager{store: store}
 }
 
 func uid(id any) string {
@@ -40,55 +176,27 @@ func uid(id any) string {
 }
 
 func (m *Manager) AssignRole(userID any, role string) {
-	key := uid(userID)
-	m.mu.Lock()
-	if m.userRoles[key] == nil {
-		m.userRoles[key] = make(map[string]struct{})
-	}
-	m.userRoles[key][role] = struct{}{}
-	m.mu.Unlock()
+	_ = m.store.AssignRole(uid(userID), role)
 }
 
 func (m *Manager) RevokeRole(userID any, role string) {
-	m.mu.Lock()
-	delete(m.userRoles[uid(userID)], role)
-	m.mu.Unlock()
+	_ = m.store.RevokeRole(uid(userID), role)
 }
 
 func (m *Manager) Grant(role, permission string) {
-	m.mu.Lock()
-	if m.rolePerms[role] == nil {
-		m.rolePerms[role] = make(map[string]struct{})
-	}
-	m.rolePerms[role][permission] = struct{}{}
-	m.mu.Unlock()
+	_ = m.store.Grant(role, permission)
 }
 
 func (m *Manager) Deny(role, permission string) {
-	m.mu.Lock()
-	delete(m.rolePerms[role], permission)
-	m.mu.Unlock()
+	_ = m.store.Deny(role, permission)
 }
 
 func (m *Manager) HasRole(userID any, role string) bool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	_, ok := m.userRoles[uid(userID)][role]
-	return ok
+	return m.store.HasRole(uid(userID), role)
 }
 
 func (m *Manager) Can(userID any, permission string) bool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	for role := range m.userRoles[uid(userID)] {
-		if _, ok := m.rolePerms[role][permission]; ok {
-			return true
-		}
-		if _, ok := m.rolePerms[role]["*"]; ok {
-			return true
-		}
-	}
-	return false
+	return m.store.Can(uid(userID), permission)
 }
 
 // Middleware requires the authenticated user (auth_user_id) to have permission.
